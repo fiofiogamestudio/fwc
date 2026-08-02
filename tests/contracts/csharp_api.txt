@@ -20,6 +20,82 @@ type static class Fw.Rt.Config.ConfigPack
   const System.Int32 Version = 1
   static method System.Byte[] Encode(System.ReadOnlySpan<System.Byte> payload, System.ReadOnlySpan<System.Byte> schemaHash)
   static method System.Collections.Generic.Dictionary<System.String,System.Text.Json.JsonElement> Decode(System.ReadOnlyMemory<System.Byte> pack, System.String expectedSchemaHash)
+type sealed class Fw.Rt.Rooms.RoomDirectoryClient : System.IDisposable
+  ctor(System.String baseUrl, System.Net.Http.HttpClient httpClient = null)
+  method System.Threading.Tasks.Task HeartbeatAsync(System.String roomId, System.String heartbeatToken, Fw.Rt.Rooms.RoomHeartbeat heartbeat, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task UnregisterAsync(System.String roomId, System.String heartbeatToken, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task<Fw.Rt.Rooms.RoomJoin> JoinAsync(System.String roomId, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task<Fw.Rt.Rooms.RoomRegistrationResult> RegisterAsync(Fw.Rt.Rooms.RoomRegistration registration, System.String registrationSecret, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Fw.Rt.Rooms.RoomInfo>> ListAsync(System.String gameId, System.Int32 protocolVersion, System.Threading.CancellationToken cancellationToken = null)
+  method System.Void Dispose()
+type sealed class Fw.Rt.Rooms.RoomDirectoryException : System.Exception
+  ctor(System.String message, System.Int32 statusCode = 0)
+  property System.Int32 StatusCode {get;}
+type sealed class Fw.Rt.Rooms.RoomDirectoryStore
+  ctor(System.String secret, System.TimeSpan staleAfter, System.TimeSpan ticketLifetime)
+  method Fw.Rt.Rooms.RoomJoin Join(System.String roomId, System.DateTimeOffset now)
+  method Fw.Rt.Rooms.RoomRegistrationResult Register(Fw.Rt.Rooms.RoomRegistration registration, System.String registrationSecret, System.String remoteHost, System.DateTimeOffset now)
+  method System.Boolean Heartbeat(System.String roomId, System.String heartbeatToken, Fw.Rt.Rooms.RoomHeartbeat heartbeat, System.DateTimeOffset now)
+  method System.Boolean Remove(System.String roomId, System.String heartbeatToken)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Rooms.RoomInfo> List(System.String gameId, System.Int32 protocolVersion, System.DateTimeOffset now)
+  method System.Int32 Sweep(System.DateTimeOffset now)
+  property System.Int32 Count {get;}
+type sealed class Fw.Rt.Rooms.RoomHeartbeat
+  ctor()
+  property System.Int32 Players {get;init;}
+  property System.String Status {get;init;}
+type sealed class Fw.Rt.Rooms.RoomInfo
+  ctor()
+  property System.Collections.Generic.Dictionary<System.String,System.String> Tags {get;init;}
+  property System.Int32 Capacity {get;init;}
+  property System.Int32 Players {get;init;}
+  property System.Int32 Port {get;init;}
+  property System.Int32 ProtocolVersion {get;init;}
+  property System.Int64 UpdatedAtUnixSeconds {get;init;}
+  property System.String GameId {get;init;}
+  property System.String Host {get;init;}
+  property System.String MapKey {get;init;}
+  property System.String Name {get;init;}
+  property System.String Region {get;init;}
+  property System.String RoomId {get;init;}
+  property System.String Status {get;init;}
+type sealed class Fw.Rt.Rooms.RoomJoin
+  ctor()
+  property Fw.Rt.Rooms.RoomInfo Room {get;init;}
+  property System.Int64 ExpiresAtUnixSeconds {get;init;}
+  property System.String Ticket {get;init;}
+type sealed class Fw.Rt.Rooms.RoomRegistration
+  ctor()
+  property System.Collections.Generic.Dictionary<System.String,System.String> Tags {get;init;}
+  property System.Int32 Capacity {get;init;}
+  property System.Int32 Port {get;init;}
+  property System.Int32 ProtocolVersion {get;init;}
+  property System.String GameId {get;init;}
+  property System.String Host {get;init;}
+  property System.String MapKey {get;init;}
+  property System.String Name {get;init;}
+  property System.String Region {get;init;}
+  property System.String RoomId {get;init;}
+type sealed class Fw.Rt.Rooms.RoomRegistrationResult
+  ctor()
+  property Fw.Rt.Rooms.RoomInfo Room {get;init;}
+  property System.Int32 HeartbeatIntervalMilliseconds {get;init;}
+  property System.String AdmissionSecret {get;init;}
+  property System.String HeartbeatToken {get;init;}
+type static class Fw.Rt.Rooms.RoomStatus
+  const System.String Closed = "closed"
+  const System.String Full = "full"
+  const System.String Open = "open"
+type static class Fw.Rt.Rooms.RoomTicket
+  const System.Int32 Version = 1
+  static method System.Boolean TryValidate(System.String ticket, System.String secret, System.String expectedGameId, System.String expectedRoomId, System.DateTimeOffset now, out Fw.Rt.Rooms.RoomTicketClaims claims)
+  static method System.String Create(System.String secret, System.String gameId, System.String roomId, System.DateTimeOffset expiresAt, System.String nonce = null)
+type sealed class Fw.Rt.Rooms.RoomTicketClaims
+  ctor()
+  property System.Int64 ExpiresAtUnixSeconds {get;init;}
+  property System.String GameId {get;init;}
+  property System.String Nonce {get;init;}
+  property System.String RoomId {get;init;}
 type interface Fw.Rt.Systems.ISystem<TContext>
   method System.Void Init(TContext context)
   method System.Void Shutdown()

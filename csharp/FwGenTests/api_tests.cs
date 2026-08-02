@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text;
 using Fw.Rt.Bridge;
 using Fw.Rt.Config;
+using Fw.Rt.Rooms;
 using Fw.Rt.Systems;
 using static TestKit;
 
@@ -36,6 +37,24 @@ static class ApiTests
             typeof(ReadOnlyMemory<byte>),
             typeof(string)
         );
+
+        RequireConstant(typeof(RoomTicket), nameof(RoomTicket.Version), RoomTicket.Version);
+        RequireConstructor(typeof(RoomDirectoryStore), typeof(string), typeof(TimeSpan), typeof(TimeSpan));
+        RequireProperty(typeof(RoomDirectoryStore), nameof(RoomDirectoryStore.Count), typeof(int));
+        RequireProperty(
+            typeof(RoomRegistrationResult),
+            nameof(RoomRegistrationResult.AdmissionSecret),
+            typeof(string)
+        );
+        RequireProperty(
+            typeof(RoomRegistrationResult),
+            nameof(RoomRegistrationResult.HeartbeatIntervalMilliseconds),
+            typeof(int)
+        );
+        RequireConstructor(typeof(RoomDirectoryClient), typeof(string), typeof(HttpClient));
+        RequireConstructor(typeof(RoomInfo));
+        RequireProperty(typeof(RoomInfo), nameof(RoomInfo.RoomId), typeof(string));
+        RequireProperty(typeof(RoomInfo), nameof(RoomInfo.ProtocolVersion), typeof(int));
 
         RequireMethod(typeof(ISystem<object>), nameof(ISystem<object>.Init), false, typeof(void), typeof(object));
         RequireMethod(typeof(ISystem<object>), nameof(ISystem<object>.Tick), false, typeof(void), typeof(float));

@@ -1,4 +1,5 @@
 using Fw.Rt.Bridge;
+using Fw.Rt.Rooms;
 using Fw.Rt.Systems;
 using static TestKit;
 
@@ -12,6 +13,8 @@ static class RuntimeTests
         new("wire frame rejects tampering", TestWireFrameTampering),
         new("wire frame rejects malformed headers", TestWireFrameHeaders),
         new("wire frame rejects every single-byte mutation", TestWireFrameMutationSweep),
+        new("room ticket authenticates claims", TestRoomTicket),
+        new("room directory lifecycle", TestRoomDirectory),
         new("system phase ordering", TestSystemPhaseOrdering),
         new("system init rollback", TestSystemInitRollback),
         new("system tick fault cleanup", TestSystemTickFaultCleanup),
@@ -109,6 +112,111 @@ static class RuntimeTests
                 $"wire frame mutation at byte {position}"
             );
         }
+    }
+
+    private static void TestRoomTicket()
+    {
+        DateTimeOffset now = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000);
+        string ticket = RoomTicket.Create("test-secret", "game", "room_1", now.AddSeconds(30), "nonce");
+        True(
+            RoomTicket.TryValidate(ticket, "test-secret", "game", "room_1", now, out RoomTicketClaims claims),
+            "room ticket validates"
+        );
+        Equal("nonce", claims.Nonce, "room ticket nonce");
+        Equal(now.AddSeconds(30).ToUnixTimeSeconds(), claims.ExpiresAtUnixSeconds, "room ticket expiry");
+        True(!RoomTicket.TryValidate(ticket, "wrong", "game", "room_1", now, out _), "wrong secret");
+        True(!RoomTicket.TryValidate(ticket, "test-secret", "game", "other", now, out _), "wrong room");
+        True(!RoomTicket.TryValidate(ticket, "test-secret", "game", "room_1", now.AddSeconds(30), out _), "expired ticket");
+        string tampered = ticket[..^1] + (ticket[^1] == 'A' ? "B" : "A");
+        True(!RoomTicket.TryValidate(tampered, "test-secret", "game", "room_1", now, out _), "tampered ticket");
+    }
+
+    private static void TestRoomDirectory()
+    {
+        DateTimeOffset now = DateTimeOffset.FromUnixTimeSeconds(1_700_000_000);
+        var store = new RoomDirectoryStore("test-secret", TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(5));
+        var registration = new RoomRegistration
+        {
+            RoomId = "room_1",
+            GameId = "game",
+            Name = "Test Room",
+            Port = 7777,
+            MapKey = "default",
+            Capacity = 2,
+            ProtocolVersion = 7,
+            Tags = null!,
+        };
+        Throws<ArgumentNullException>(
+            () => store.Register(null!, "test-secret", "127.0.0.1", now),
+            "registration"
+        );
+        Throws<UnauthorizedAccessException>(
+            () => store.Register(registration, "wrong", "127.0.0.1", now),
+            "registration secret"
+        );
+
+        RoomRegistrationResult registered = store.Register(registration, "test-secret", "127.0.0.1", now);
+        Equal("127.0.0.1", registered.Room.Host, "remote host fallback");
+        Equal(0, registered.Room.Tags.Count, "null tags normalize to empty");
+        True(registered.AdmissionSecret.Length >= 32, "room admission secret");
+        Equal(5000, registered.HeartbeatIntervalMilliseconds, "heartbeat interval follows lease");
+        Throws<InvalidOperationException>(
+            () => store.Register(registration, "test-secret", "127.0.0.1", now),
+            "active room"
+        );
+        Equal(1, store.List("game", 7, now).Count, "listed room");
+        True(!store.Heartbeat("room_1", "wrong", new RoomHeartbeat(), now), "heartbeat token");
+        Throws<ArgumentNullException>(
+            () => store.Heartbeat("room_1", registered.HeartbeatToken, null!, now),
+            "heartbeat"
+        );
+        True(
+            store.Heartbeat(
+                "room_1",
+                registered.HeartbeatToken,
+                new RoomHeartbeat { Players = 2 },
+                now.AddSeconds(1)
+            ),
+            "room heartbeat"
+        );
+        Equal(RoomStatus.Full, store.List("game", 7, now.AddSeconds(1))[0].Status, "full status");
+        True(store.Join("room_1", now.AddSeconds(1)) == null, "full room rejects join");
+
+        True(
+            store.Heartbeat(
+                "room_1",
+                registered.HeartbeatToken,
+                new RoomHeartbeat { Players = 1 },
+                now.AddSeconds(2)
+            ),
+            "room reopens"
+        );
+        RoomJoin join = store.Join("room_1", now.AddSeconds(2))
+            ?? throw new InvalidOperationException("Open room did not issue a join ticket.");
+        True(
+            RoomTicket.TryValidate(
+                join.Ticket,
+                registered.AdmissionSecret,
+                "game",
+                "room_1",
+                now.AddSeconds(2),
+                out _
+            ),
+            "directory join ticket"
+        );
+        True(
+            !RoomTicket.TryValidate(
+                join.Ticket,
+                "test-secret",
+                "game",
+                "room_1",
+                now.AddSeconds(2),
+                out _
+            ),
+            "directory registration secret cannot validate room tickets"
+        );
+        Equal(1, store.Sweep(now.AddSeconds(18)), "stale room swept");
+        Equal(0, store.List("game", 7, now.AddSeconds(18)).Count, "stale room hidden");
     }
 
     private static void TestSystemPhaseOrdering()
