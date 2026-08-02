@@ -4,12 +4,14 @@ extends Node
 const FPoolScript = preload("../pool/_pool.gd")
 const FAssetScript = preload("../_asset.gd")
 const FUIScript = preload("../../vu/ui/_ui.gd")
+const FAudioScript = preload("../../vu/audio/_audio.gd")
 
 var _mode_host: Node
 var _pool: RefCounted
 var _asset: RefCounted
 var _ui_root: CanvasLayer
 var _ui: RefCounted
+var _audio: RefCounted
 var _active_mode: Variant = null
 var _is_switching_mode: bool = false
 
@@ -29,6 +31,8 @@ func _ready() -> void:
 
 	_ui = FUIScript.new()
 	_ui.setup(_ui_root)
+	_audio = FAudioScript.new()
+	_audio.setup(self)
 
 	on_app_ready()
 
@@ -43,7 +47,10 @@ func _exit_tree() -> void:
 		_pool.flush()
 	if _asset:
 		_asset.unload()
+	if _audio:
+		_audio.clear()
 	_ui = null
+	_audio = null
 	_pool = null
 	_asset = null
 
@@ -127,3 +134,7 @@ func ui_root() -> CanvasLayer:
 
 func ui() -> Variant:
 	return _ui
+
+
+func audio() -> Variant:
+	return _audio

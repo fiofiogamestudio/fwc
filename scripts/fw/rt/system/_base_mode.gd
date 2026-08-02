@@ -103,3 +103,7 @@ func asset() -> Variant:
 
 func ui() -> Variant:
 	return _root.ui()
+
+
+func audio() -> Variant:
+	return _root.audio()

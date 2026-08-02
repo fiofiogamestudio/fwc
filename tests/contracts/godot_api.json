@@ -4,6 +4,7 @@
 		"constants": [],
 		"methods": [
 			"asset()->Nil;defaults=[]",
+			"audio()->Nil;defaults=[]",
 			"mode_host()->Node;defaults=[]",
 			"on_app_ready()->Nil;defaults=[]",
 			"on_mode_switch_failed(_mode:Nil)->Nil;defaults=[]",
@@ -21,6 +22,7 @@
 		"methods": [
 			"add_system(id:StringName, system:Nil, context:Nil, phase:StringName)->bool;defaults=[null, &\"\"]",
 			"asset()->Nil;defaults=[]",
+			"audio()->Nil;defaults=[]",
 			"bind_system_refs(refs:Dictionary)->bool;defaults=[]",
 			"enter(root:Nil, context:Nil)->bool;defaults=[null]",
 			"enter_error()->String;defaults=[]",
@@ -56,6 +58,18 @@
 		"methods": [
 			"load(path:String)->Resource;defaults=[]",
 			"unload(path:String)->Nil;defaults=[\"\"]"
+		],
+		"properties": [],
+		"signals": []
+	},
+	"FAudio": {
+		"base": "RefCounted",
+		"constants": [],
+		"methods": [
+			"clear()->Nil;defaults=[]",
+			"create_player_3d(parent:Node, player_name:StringName, bus:StringName)->AudioStreamPlayer3D;defaults=[&\"Master\"]",
+			"play_3d(player:AudioStreamPlayer3D, stream:AudioStream, volume_db:float, pitch_scale:float, max_distance:float, unit_size:float)->bool;defaults=[0.0, 1.0, 12.0, 1.0]",
+			"setup(host:Node)->Nil;defaults=[]"
 		],
 		"properties": [],
 		"signals": []
