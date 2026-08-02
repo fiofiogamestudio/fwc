@@ -89,7 +89,7 @@ static class GenerationManifest
             config,
             "config",
             ConfigInputHash(root, config),
-            [config.ConfigGdPath(root), config.ConfigContractCsPath(root), config.ConfigCodecCsPath(root)]
+            ConfigOutputs(root, config)
         );
     }
 
@@ -132,8 +132,19 @@ static class GenerationManifest
             model,
             "config",
             ConfigInputHash(root, config),
-            [config.ConfigGdPath(root), config.ConfigContractCsPath(root), config.ConfigCodecCsPath(root)]
+            ConfigOutputs(root, config)
         );
+    }
+
+    private static IEnumerable<string> ConfigOutputs(string root, FwConfig config)
+    {
+        yield return config.ConfigGdPath(root);
+        yield return config.ConfigContractCsPath(root);
+        yield return config.ConfigCodecCsPath(root);
+        if (config.HasFweGen())
+        {
+            yield return config.ConfigFwePath(root);
+        }
     }
 
     private static void Stage(

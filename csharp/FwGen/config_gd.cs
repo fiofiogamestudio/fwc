@@ -128,6 +128,9 @@ static func _cell(row: Dictionary, field: String, ctx: String) -> String:
 		return ""
 	return str(row[field])
 
+static func _has_csv_value(row: Dictionary, field: String) -> bool:
+	return row.has(field) and not str(row[field]).strip_edges().is_empty()
+
 static func _as_dictionary(value: Variant, ctx: String) -> Dictionary:
 	if not (value is Dictionary):
 		_fail("%s must be a dictionary" % ctx)
@@ -143,7 +146,7 @@ static func _object_field(obj: Dictionary, field: String, ctx: String) -> Varian
 static func _parse_text_int(value: Variant, ctx: String) -> int:
 	match typeof(value):
 		TYPE_STRING:
-			var text: String = str(value)
+			var text: String = str(value).strip_edges()
 			if not text.is_valid_int():
 				_fail("%s must be int-compatible text" % ctx)
 				return 0
@@ -159,7 +162,7 @@ static func _parse_text_bool(value: Variant, ctx: String) -> bool:
 		TYPE_BOOL:
 			return bool(value)
 		TYPE_STRING:
-			var text: String = str(value).to_lower()
+			var text: String = str(value).strip_edges().to_lower()
 			if text in ["1", "true", "yes"]:
 				return true
 			if text in ["0", "false", "no"]:
@@ -175,7 +178,7 @@ static func _parse_text_fixed(value: Variant, ctx: String) -> float:
 static func _parse_text_float(value: Variant, ctx: String) -> float:
 	match typeof(value):
 		TYPE_STRING:
-			var text: String = str(value)
+			var text: String = str(value).strip_edges()
 			if not text.is_valid_float() and not text.is_valid_int():
 				_fail("%s must be float-compatible text" % ctx)
 				return 0.0
@@ -204,7 +207,7 @@ static func _parse_bin_int(value: Variant, ctx: String) -> int:
 		TYPE_INT, TYPE_FLOAT:
 			return int(value)
 		TYPE_STRING:
-			var text: String = str(value)
+			var text: String = str(value).strip_edges()
 			if not text.is_valid_int():
 				_fail("%s must be int-compatible text" % ctx)
 				return 0
@@ -227,7 +230,7 @@ static func _parse_bin_float(value: Variant, ctx: String) -> float:
 		TYPE_INT, TYPE_FLOAT:
 			return float(value)
 		TYPE_STRING:
-			var text: String = str(value)
+			var text: String = str(value).strip_edges()
 			if not text.is_valid_float() and not text.is_valid_int():
 				_fail("%s must be float-compatible text" % ctx)
 				return 0.0
@@ -374,7 +377,7 @@ static func _clone_all(entries: Array) -> Array:
             var ctx = $"\"%s.{field.Name}\" % ctx";
             var expr = GdCsvFieldExpr(field, schema, $"_cell(row, \"{field.Name}\", ctx)", ctx);
             var fallback = GdMissingFieldExpr(field, schema);
-            text.AppendLine($"\t\t\t\"{field.Name}\": {expr} if row.has(\"{field.Name}\") else {fallback},");
+            text.AppendLine($"\t\t\t\"{field.Name}\": {expr} if _has_csv_value(row, \"{field.Name}\") else {fallback},");
         }
         text.AppendLine("\t\t}");
         text.AppendLine("\t\tentries.append({\"key\": _cell(row, \"key\", ctx), \"value\": value})");

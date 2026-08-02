@@ -8,7 +8,7 @@ sealed class FwConfig
         {
             ["project"] = new(StringComparer.Ordinal) { "name" },
             ["schema"] = new(StringComparer.Ordinal) { "system", "bridge", "config" },
-            ["gen"] = new(StringComparer.Ordinal) { "gdscript", "csharp" },
+            ["gen"] = new(StringComparer.Ordinal) { "gdscript", "csharp", "fwe" },
             ["data"] = new(StringComparer.Ordinal) { "config" },
             ["pack"] = new(StringComparer.Ordinal) { "config" },
             ["script"] = new(StringComparer.Ordinal) { "gdscript", "csharp" },
@@ -101,6 +101,21 @@ sealed class FwConfig
     public string ConfigGdPath(string root)
     {
         return Path.GetFullPath(Path.Combine(GodotGenDir(root), "_config.gd"));
+    }
+
+    public bool HasFweGen()
+    {
+        return HasValue("gen", "fwe");
+    }
+
+    public string FweGenDir(string root)
+    {
+        return PathValue(root, "gen", "fwe", "tools/fwe/_gen");
+    }
+
+    public string ConfigFwePath(string root)
+    {
+        return Path.GetFullPath(Path.Combine(FweGenDir(root), "_config_schema.json"));
     }
 
     public string ConfigPackDir(string root)

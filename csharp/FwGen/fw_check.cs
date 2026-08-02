@@ -379,6 +379,10 @@ static class FwCheck
             RequireDir(csharpRoot, "[script].csharp");
             RequireDir(gdGen, "[gen].gdscript");
             RequireDir(csharpGen, "[gen].csharp");
+            if (_config.HasFweGen())
+            {
+                RequireDir(_config.FweGenDir(_root), "[gen].fwe");
+            }
 
             RequireDir(Path.Combine(csharpRoot, "bridge"), "csharp/bridge");
             RequireDir(Path.Combine(csharpRoot, "core"), "csharp/core");
@@ -527,6 +531,10 @@ static class FwCheck
         {
             CheckGeneratedDir(_config.GodotGenDir(_root));
             CheckGeneratedDir(Path.GetDirectoryName(_config.CoreSystemsCsPath(_root)) ?? Path.Combine(_root, "csharp", "_gen"));
+            if (_config.HasFweGen())
+            {
+                CheckGeneratedDir(_config.FweGenDir(_root));
+            }
         }
 
         private void CheckFileSuffixes()

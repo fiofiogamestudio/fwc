@@ -7,11 +7,19 @@ static class ConfigGen
 
         ConfigCs.Stage(batch, root, config, model);
         ConfigGd.Stage(batch, root, config, model);
+        if (config.HasFweGen())
+        {
+            ConfigFwe.Stage(batch, root, config, model);
+        }
         GenerationManifest.StageConfig(batch, root, config);
         batch.Commit();
         Console.WriteLine($"generated config gd script: {config.ConfigGdPath(root)}");
         Console.WriteLine($"generated config csharp contract: {config.ConfigContractCsPath(root)}");
         Console.WriteLine($"generated config csharp codec: {config.ConfigCodecCsPath(root)}");
+        if (config.HasFweGen())
+        {
+            Console.WriteLine($"generated config FWE schema: {config.ConfigFwePath(root)}");
+        }
     }
 
     public static void Check(string root, FwConfig config)

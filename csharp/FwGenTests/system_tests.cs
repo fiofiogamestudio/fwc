@@ -160,6 +160,15 @@ static class SystemTests
             var config = FwConfig.Load(root);
             Throws(() => config.GenerationManifestPath(root), "escapes project root");
         });
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", """
+                [gen]
+                fwe = "../outside"
+                """);
+            var config = FwConfig.Load(root);
+            Throws(() => config.ConfigFwePath(root), "escapes project root");
+        });
     }
 
     private static void TestManifestOutputSet()
@@ -176,6 +185,7 @@ static class SystemTests
                 [gen]
                 gdscript = "scripts/_gen"
                 csharp = "csharp/_gen"
+                fwe = "tools/fwe/_gen"
                 [data]
                 config = "data/config"
                 [pack]
@@ -209,6 +219,7 @@ static class SystemTests
                 config.ConfigGdPath(root),
                 config.ConfigContractCsPath(root),
                 config.ConfigCodecCsPath(root),
+                config.ConfigFwePath(root),
             };
             foreach (var output in outputs)
             {

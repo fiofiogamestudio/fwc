@@ -17,6 +17,8 @@ static class ConfigTests
         new("config rejects enclosing member collisions", TestConfigEnclosingMemberCollision),
         new("config reference validation", TestConfigReferenceValidation),
         new("duplicate config key fails", TestDuplicateConfigKey),
+        new("config Godot CSV blank cells use defaults", TestGodotCsvBlankCellsUseDefaults),
+        new("config generates FWE schema contract", TestConfigFweContract),
     ];
 
     private static void TestConfigPackHeader()
@@ -272,6 +274,117 @@ static class ConfigTests
                 """);
             Write(root, "data/config/game.csv.txt", "key,title\ndefault,First\ndefault,Second\n");
             Throws(() => ConfigGen.Check(root, FwConfig.Load(root)), "duplicate key");
+        });
+    }
+
+    private static void TestGodotCsvBlankCellsUseDefaults()
+    {
+        WithTempDir(root =>
+        {
+            WriteProjectConfig(root);
+            Write(root, "schema/config/game.proto", """
+                syntax = "proto3";
+                message Fixed32 {}
+                message GameConfig {
+                  uint32 count = 1;
+                  Fixed32 radius = 2;
+                  bool enabled = 3;
+                }
+                """);
+            Write(root, "data/config/game.csv.txt", "key,count,radius,enabled\ndefault,,,\n");
+
+            var config = FwConfig.Load(root);
+            ConfigGen.Check(root, config);
+            ConfigGen.Generate(root, config);
+
+            string generated = File.ReadAllText(config.ConfigGdPath(root));
+            True(
+                generated.Contains(
+                    "static func _has_csv_value(row: Dictionary, field: String) -> bool:",
+                    StringComparison.Ordinal
+                ),
+                "Godot config CSV value helper"
+            );
+            True(
+                generated.Contains(
+                    "if _has_csv_value(row, \"radius\") else 0.0",
+                    StringComparison.Ordinal
+                ),
+                "blank Fixed32 cell uses zero default"
+            );
+            True(
+                generated.Contains(
+                    "if _has_csv_value(row, \"enabled\") else false",
+                    StringComparison.Ordinal
+                ),
+                "blank bool cell uses false default"
+            );
+            True(
+                generated.Contains(
+                    "var text: String = str(value).strip_edges()",
+                    StringComparison.Ordinal
+                ),
+                "numeric text trims surrounding whitespace"
+            );
+        });
+    }
+
+    private static void TestConfigFweContract()
+    {
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", """
+                [project]
+                name = "audit"
+                [gen]
+                fwe = "tools/fwe/_gen"
+                """);
+            Write(root, "schema/config/item.proto", """
+                syntax = "proto3";
+                message Fixed32 {}
+                message ItemConfig {
+                  string display_name = 1;
+                  uint32 count = 2;
+                  Fixed32 weight = 3;
+                }
+                message GameConfig {
+                  ItemConfig initial_item = 1;
+                  repeated string tags = 2;
+                }
+                """);
+            Write(root, "data/config/item.csv.txt", "key,display_name,count,weight\ndefault,Item,1,1.5\n");
+            Write(root, "data/config/game.json", """
+                [
+                  {
+                    "key": "default",
+                    "initial_item": "default",
+                    "tags": ["audit"]
+                  }
+                ]
+                """);
+
+            var config = FwConfig.Load(root);
+            ConfigGen.Generate(root, config);
+
+            using var document = System.Text.Json.JsonDocument.Parse(
+                File.ReadAllText(config.ConfigFwePath(root))
+            );
+            var contract = document.RootElement;
+            Equal(1, contract.GetProperty("format").GetInt32(), "FWE contract format");
+            True(contract.GetProperty("schemaHash").GetString()?.Length == 64, "FWE schema hash");
+            var item = contract.GetProperty("roots").GetProperty("item");
+            Equal("csv", item.GetProperty("format").GetString(), "FWE csv format");
+            Equal("key", item.GetProperty("headers")[0].GetString(), "FWE synthetic key");
+            Equal("int", item.GetProperty("fields")[1].GetProperty("editorType").GetString(), "FWE integer type");
+            Equal("number", item.GetProperty("fields")[2].GetProperty("editorType").GetString(), "FWE fixed type");
+            var game = contract.GetProperty("roots").GetProperty("game");
+            Equal("json", game.GetProperty("format").GetString(), "FWE json format");
+            Equal(
+                "item",
+                game.GetProperty("fields")[0].GetProperty("reference").GetString(),
+                "FWE config reference"
+            );
+            Equal("array", game.GetProperty("fields")[1].GetProperty("editorType").GetString(), "FWE array type");
         });
     }
 
