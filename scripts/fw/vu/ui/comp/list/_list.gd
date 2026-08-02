@@ -61,6 +61,7 @@ func refresh() -> void:
 	for i in range(_items.size()):
 		var item: Variant = _instantiate_item()
 		if item == null:
+			clear_items()
 			return
 		_content_root.add_child(item)
 		if is_instance_of(item, FWidgetScript):
@@ -78,12 +79,17 @@ func refresh_item(index: int) -> void:
 
 
 func clear_items() -> void:
-	for item in _item_nodes:
-		if item and is_instance_of(item, FWidgetScript):
+	var item_nodes := _item_nodes
+	_item_nodes = []
+	for item in item_nodes:
+		if item == null or not is_instance_valid(item):
+			continue
+		if is_instance_of(item, FWidgetScript):
 			item.clear()
-		if is_instance_valid(item):
-			item.queue_free()
-	_item_nodes.clear()
+		var parent := item.get_parent() as Node
+		if parent != null:
+			parent.remove_child(item)
+		item.queue_free()
 	if _selection:
 		_selection.clear()
 

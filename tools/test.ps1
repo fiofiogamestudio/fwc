@@ -40,6 +40,7 @@ function Assert-GodotLog {
     if ($AllowFaultInjection) {
         $Content = $Content.Replace("ERROR: System 'second' init must return true; initialization failed.", "EXPECTED: system init failure")
         $Content = $Content.Replace("ERROR: FUI can only open scenes whose root extends FForm.", "EXPECTED: invalid form rejection")
+        $Content = $Content.Replace("ERROR: FUI form id cannot be empty.", "EXPECTED: empty form id rejection")
     }
     $ProjectErrorPattern = '(?im)(SCRIPT ERROR|Parse Error|Compile Error|Can''t run project|^ERROR:)'
     if ($Content -match $ProjectErrorPattern) {
@@ -191,6 +192,8 @@ try {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & dotnet run --project (Join-Path $FwRoot "csharp\FwGenTests\FwGenTests.csproj") -c Release
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & dotnet run --project (Join-Path $FwRoot "csharp\FwRuntime.Verify\FwRuntime.Verify.csproj") -c Release
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     New-Item -ItemType Directory -Path $TestRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $FwLink -Force | Out-Null
@@ -264,6 +267,13 @@ try {
                 -Label "Godot runtime check" `
                 -TimeoutSeconds $GodotRunTimeoutSeconds
             Assert-GodotLog -Path $RuntimeLog -Label "Godot runtime check" -AllowFaultInjection
+            $ServicesLog = Join-Path $TestRoot "godot_services.log"
+            Invoke-Godot `
+                -Executable $Godot `
+                -Arguments @("--headless", "--path", $TestRoot, "--log-file", $ServicesLog, "--script", "res://fw/tools/verify_runtime.gd") `
+                -Label "Godot services check" `
+                -TimeoutSeconds $GodotRunTimeoutSeconds
+            Assert-GodotLog -Path $ServicesLog -Label "Godot services check"
             $GameLog = Join-Path $TestRoot "godot_game.log"
             Invoke-Godot `
                 -Executable $Godot `

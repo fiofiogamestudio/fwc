@@ -35,6 +35,7 @@ done
 dotnet build "${FW_ROOT}/csharp/FwRuntime/FwRuntime.csproj" -c Release
 dotnet build "${FW_ROOT}/csharp/FwGen/FwGen.csproj" -c Release
 dotnet run --project "${FW_ROOT}/csharp/FwGenTests/FwGenTests.csproj" -c Release
+dotnet run --project "${FW_ROOT}/csharp/FwRuntime.Verify/FwRuntime.Verify.csproj" -c Release
 
 mkdir -p "${TEST_ROOT}/fw"
 tar \
@@ -99,13 +100,15 @@ if [[ -n "${GODOT_DOTNET}" && -x "${GODOT_DOTNET}" ]]; then
   dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" check
   dotnet build "${TEST_ROOT}/fw_audit.csproj" -c Debug
   timeout "${GODOT_RUN_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_runtime.log" --script "res://fw/tests/runtime_test.gd"
+  timeout "${GODOT_RUN_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_services.log" --script "res://fw/tools/verify_runtime.gd"
   timeout "${GODOT_RUN_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_game.log" --quit-after 3
   test -f "${TEST_ROOT}/.godot/global_script_class_cache.cfg"
   ! grep -Eiq 'SCRIPT ERROR|Parse Error|Compile Error|Can.t run project|^ERROR:' \
-    "${TEST_ROOT}/godot_editor.log" "${TEST_ROOT}/godot_game.log"
+    "${TEST_ROOT}/godot_editor.log" "${TEST_ROOT}/godot_services.log" "${TEST_ROOT}/godot_game.log"
   ! sed \
     -e "/^ERROR: System 'second' init must return true; initialization failed\.$/d" \
     -e '/^ERROR: FUI can only open scenes whose root extends FForm\.$/d' \
+    -e '/^ERROR: FUI form id cannot be empty\.$/d' \
     "${TEST_ROOT}/godot_runtime.log" \
     | grep -Eiq 'SCRIPT ERROR|Parse Error|Compile Error|Can.t run project|^ERROR:'
 else

@@ -20,74 +20,201 @@ public enum SystemRuntimeState
     Stopped,
 }
 
+public enum SystemRemoveMode
+{
+    DenyIfReferenced,
+    Cascade,
+}
+
+public sealed record SystemSnapshot(
+    string Scope,
+    string Id,
+    string Phase,
+    bool Initialized,
+    IReadOnlyList<string> Dependencies,
+    IReadOnlyList<string> Dependents
+);
+
 public sealed class SystemRuntime
 {
+    private readonly SystemRuntime? _parent;
     private readonly List<Entry> _entries = [];
     private readonly Dictionary<string, Entry> _entriesById = new(StringComparer.Ordinal);
     private readonly List<Entry> _initializedEntries = [];
     private readonly List<string> _phaseOrder = [];
     private List<Entry>? _orderedEntries;
 
+    public SystemRuntime()
+        : this(null)
+    {
+    }
+
+    public SystemRuntime(SystemRuntime? parent)
+    {
+        _parent = parent;
+    }
+
+    public event Action<string>? SystemAdded;
+    public event Action<string>? SystemRemoved;
+
     public IReadOnlyList<string> PhaseOrder => new ReadOnlyCollection<string>(_phaseOrder);
     public SystemRuntimeState State { get; private set; } = SystemRuntimeState.Created;
     public bool IsRunning => State == SystemRuntimeState.Running;
+    public bool IsStarted => IsRunning;
+    public SystemRuntime? Parent => _parent;
 
     public void SetPhaseOrder(IEnumerable<string> order)
     {
         EnsureConfigurable();
+        ArgumentNullException.ThrowIfNull(order);
         _phaseOrder.Clear();
         foreach (var rawPhase in order)
         {
-            var phase = rawPhase.Trim();
+            var phase = rawPhase?.Trim() ?? string.Empty;
             if (phase.Length == 0 || _phaseOrder.Contains(phase, StringComparer.Ordinal))
             {
                 continue;
             }
             _phaseOrder.Add(phase);
         }
-        _orderedEntries = null;
+        InvalidateOrder();
     }
 
     public void Add<TContext>(string id, ISystem<TContext> system, TContext context, string phase = "")
         where TContext : class
     {
+        AddCore(id, system, context, phase, null);
+    }
+
+    public void AddWithDependencies<TContext>(
+        string id,
+        ISystem<TContext> system,
+        TContext context,
+        string phase,
+        IEnumerable<string> dependencies
+    )
+        where TContext : class
+    {
+        ArgumentNullException.ThrowIfNull(dependencies);
+        AddCore(id, system, context, phase, dependencies);
+    }
+
+    public void SetDependencies(string id, IEnumerable<string> dependencies)
+    {
         EnsureConfigurable();
-        if (string.IsNullOrWhiteSpace(id))
+        ArgumentNullException.ThrowIfNull(dependencies);
+        if (!_entriesById.TryGetValue(id, out var entry))
         {
-            throw new ArgumentException("System id cannot be empty.", nameof(id));
+            throw new KeyNotFoundException($"Missing local system: {id}");
         }
-        if (_entriesById.ContainsKey(id))
-        {
-            throw new InvalidOperationException($"Duplicate system id: {id}");
-        }
+        entry.Dependencies.Clear();
+        entry.Dependencies.AddRange(NormalizeDependencies(id, dependencies));
+        InvalidateOrder();
+    }
 
-        ArgumentNullException.ThrowIfNull(system);
-        ArgumentNullException.ThrowIfNull(context);
-
-        var entry = new Entry(
-            id,
-            phase,
-            context,
-            () => system.Init(context),
-            system.Tick,
-            system.Shutdown
-        );
-        _entries.Add(entry);
-        _entriesById[id] = entry;
-        _orderedEntries = null;
+    public bool HasLocal(string id)
+    {
+        return _entriesById.ContainsKey(id);
     }
 
     public bool Has(string id)
     {
-        return _entriesById.ContainsKey(id);
+        return HasLocal(id) || (_parent?.Has(id) ?? false);
+    }
+
+    public bool IsInitialized(string id)
+    {
+        if (_entriesById.TryGetValue(id, out var entry))
+        {
+            return entry.Initialized;
+        }
+        return _parent?.IsInitialized(id) ?? false;
     }
 
     public TContext? GetContext<TContext>(string id)
         where TContext : class
     {
-        return _entriesById.TryGetValue(id, out var entry)
-            ? entry.Context as TContext
-            : null;
+        if (_entriesById.TryGetValue(id, out var entry))
+        {
+            return entry.Context as TContext;
+        }
+        return _parent?.GetContext<TContext>(id);
+    }
+
+    public bool TryGetContext<TContext>(string id, out TContext? context)
+        where TContext : class
+    {
+        context = GetContext<TContext>(id);
+        return context != null;
+    }
+
+    public bool Remove(string id, SystemRemoveMode mode = SystemRemoveMode.DenyIfReferenced)
+    {
+        if (State is SystemRuntimeState.Initializing or SystemRuntimeState.Stopping or SystemRuntimeState.Stopped)
+        {
+            throw new InvalidOperationException($"System runtime cannot remove systems from state {State}.");
+        }
+        if (!_entriesById.TryGetValue(id, out var entry))
+        {
+            return false;
+        }
+
+        var dependents = GetLocalDependents(id);
+        if (mode == SystemRemoveMode.DenyIfReferenced && dependents.Count > 0)
+        {
+            throw new InvalidOperationException(
+                $"Cannot remove system '{id}'; dependents still exist: {string.Join(", ", dependents)}"
+            );
+        }
+
+        var removalOrder = new List<Entry>();
+        CollectRemovalOrder(entry, new HashSet<string>(StringComparer.Ordinal), removalOrder);
+        List<Exception>? errors = null;
+        foreach (var removeEntry in removalOrder)
+        {
+            try
+            {
+                ShutdownEntry(removeEntry);
+            }
+            catch (Exception exception)
+            {
+                (errors ??= []).Add(exception);
+            }
+            _entries.Remove(removeEntry);
+            _entriesById.Remove(removeEntry.Id);
+            _initializedEntries.Remove(removeEntry);
+            SystemRemoved?.Invoke(removeEntry.Id);
+        }
+        InvalidateOrder();
+        if (errors is { Count: > 0 })
+        {
+            throw new AggregateException("One or more systems failed during removal.", errors);
+        }
+        return true;
+    }
+
+    public IReadOnlyList<SystemSnapshot> GetSnapshots(bool includeParent = true)
+    {
+        var result = new List<SystemSnapshot>();
+        if (includeParent && _parent != null)
+        {
+            foreach (var snapshot in _parent.GetSnapshots(true))
+            {
+                result.Add(snapshot with { Scope = $"parent/{snapshot.Scope}" });
+            }
+        }
+        foreach (var entry in OrderedEntries())
+        {
+            result.Add(new SystemSnapshot(
+                "local",
+                entry.Id,
+                entry.Phase,
+                entry.Initialized,
+                entry.Dependencies.AsReadOnly(),
+                GetLocalDependents(entry.Id).AsReadOnly()
+            ));
+        }
+        return result.AsReadOnly();
     }
 
     public void InitAll()
@@ -102,6 +229,8 @@ public sealed class SystemRuntime
         {
             foreach (var entry in OrderedEntries())
             {
+                EnsureDependenciesInitialized(entry);
+                entry.Initialized = true;
                 _initializedEntries.Add(entry);
                 entry.Init();
             }
@@ -127,9 +256,12 @@ public sealed class SystemRuntime
 
         try
         {
-            foreach (var entry in OrderedEntries())
+            foreach (var entry in OrderedEntries().ToArray())
             {
-                entry.Tick(dt);
+                if (_entriesById.ContainsKey(entry.Id) && entry.Initialized)
+                {
+                    entry.Tick(dt);
+                }
             }
         }
         catch
@@ -141,7 +273,7 @@ public sealed class SystemRuntime
 
     public void ShutdownAll()
     {
-        if (State == SystemRuntimeState.Stopped || State == SystemRuntimeState.Stopping)
+        if (State is SystemRuntimeState.Stopped or SystemRuntimeState.Stopping)
         {
             return;
         }
@@ -157,6 +289,42 @@ public sealed class SystemRuntime
         }
     }
 
+    private void AddCore<TContext>(
+        string id,
+        ISystem<TContext> system,
+        TContext context,
+        string phase,
+        IEnumerable<string>? dependencies
+    )
+        where TContext : class
+    {
+        EnsureConfigurable();
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            throw new ArgumentException("System id cannot be empty.", nameof(id));
+        }
+        if (Has(id))
+        {
+            throw new InvalidOperationException($"Duplicate system id in runtime scope: {id}");
+        }
+
+        ArgumentNullException.ThrowIfNull(system);
+        ArgumentNullException.ThrowIfNull(context);
+        var entry = new Entry(
+            id,
+            phase?.Trim() ?? string.Empty,
+            context,
+            () => system.Init(context),
+            system.Tick,
+            system.Shutdown,
+            NormalizeDependencies(id, dependencies)
+        );
+        _entries.Add(entry);
+        _entriesById[id] = entry;
+        InvalidateOrder();
+        SystemAdded?.Invoke(id);
+    }
+
     private void EnsureConfigurable()
     {
         if (State != SystemRuntimeState.Created)
@@ -167,11 +335,11 @@ public sealed class SystemRuntime
 
     private void ShutdownInitialized(List<Exception> errors)
     {
-        for (var i = _initializedEntries.Count - 1; i >= 0; i--)
+        for (var index = _initializedEntries.Count - 1; index >= 0; index--)
         {
             try
             {
-                _initializedEntries[i].Shutdown();
+                ShutdownEntry(_initializedEntries[index]);
             }
             catch (Exception shutdownError)
             {
@@ -185,8 +353,48 @@ public sealed class SystemRuntime
     {
         _entries.Clear();
         _entriesById.Clear();
+        _initializedEntries.Clear();
         _phaseOrder.Clear();
         _orderedEntries = null;
+    }
+
+    private static void ShutdownEntry(Entry entry)
+    {
+        if (!entry.Initialized)
+        {
+            return;
+        }
+        entry.Initialized = false;
+        entry.Shutdown();
+    }
+
+    private void EnsureDependenciesInitialized(Entry entry)
+    {
+        foreach (var dependencyId in entry.Dependencies)
+        {
+            if (_entriesById.TryGetValue(dependencyId, out var dependency))
+            {
+                if (!dependency.Initialized)
+                {
+                    throw new InvalidOperationException(
+                        $"System '{entry.Id}' requires '{dependencyId}' to be initialized first."
+                    );
+                }
+                continue;
+            }
+            if (!(_parent?.Has(dependencyId) ?? false))
+            {
+                throw new InvalidOperationException(
+                    $"System '{entry.Id}' references missing dependency '{dependencyId}'."
+                );
+            }
+            if (!(_parent?.IsInitialized(dependencyId) ?? false))
+            {
+                throw new InvalidOperationException(
+                    $"System '{entry.Id}' requires parent system '{dependencyId}' to be initialized first."
+                );
+            }
+        }
     }
 
     private IReadOnlyList<Entry> OrderedEntries()
@@ -196,45 +404,136 @@ public sealed class SystemRuntime
             return _orderedEntries;
         }
 
-        if (_phaseOrder.Count == 0)
+        var baseOrder = _entries
+            .Select((entry, index) => new { Entry = entry, Index = index })
+            .OrderBy(item => PhaseRank(item.Entry.Phase))
+            .ThenBy(item => item.Index)
+            .Select(item => item.Entry)
+            .ToArray();
+        var ordered = new List<Entry>(_entries.Count);
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var visiting = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var entry in baseOrder)
         {
-            _orderedEntries = [.. _entries];
-            return _orderedEntries;
-        }
-
-        var ordered = new List<Entry>();
-        var added = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var phase in _phaseOrder)
-        {
-            foreach (var entry in _entries)
-            {
-                if (entry.Phase != phase)
-                {
-                    continue;
-                }
-                ordered.Add(entry);
-                added.Add(entry.Id);
-            }
-        }
-
-        foreach (var entry in _entries)
-        {
-            if (added.Contains(entry.Id))
-            {
-                continue;
-            }
-            ordered.Add(entry);
+            Visit(entry, visited, visiting, ordered);
         }
         _orderedEntries = ordered;
         return _orderedEntries;
     }
 
-    private sealed record Entry(
-        string Id,
-        string Phase,
-        object Context,
-        Action Init,
-        Action<float> Tick,
-        Action Shutdown
-    );
+    private void Visit(
+        Entry entry,
+        HashSet<string> visited,
+        HashSet<string> visiting,
+        List<Entry> ordered
+    )
+    {
+        if (visited.Contains(entry.Id))
+        {
+            return;
+        }
+        if (!visiting.Add(entry.Id))
+        {
+            throw new InvalidOperationException($"System dependency cycle detected at '{entry.Id}'.");
+        }
+        foreach (var dependencyId in entry.Dependencies)
+        {
+            if (!_entriesById.TryGetValue(dependencyId, out var dependency))
+            {
+                if (!(_parent?.Has(dependencyId) ?? false))
+                {
+                    throw new InvalidOperationException(
+                        $"System '{entry.Id}' references missing dependency '{dependencyId}'."
+                    );
+                }
+                continue;
+            }
+            if (PhaseRank(dependency.Phase) > PhaseRank(entry.Phase))
+            {
+                throw new InvalidOperationException(
+                    $"System '{entry.Id}' in phase '{entry.Phase}' depends on later phase system " +
+                    $"'{dependency.Id}' in phase '{dependency.Phase}'."
+                );
+            }
+            Visit(dependency, visited, visiting, ordered);
+        }
+        visiting.Remove(entry.Id);
+        visited.Add(entry.Id);
+        ordered.Add(entry);
+    }
+
+    private int PhaseRank(string phase)
+    {
+        var index = _phaseOrder.FindIndex(item => string.Equals(item, phase, StringComparison.Ordinal));
+        return index >= 0 ? index : _phaseOrder.Count;
+    }
+
+    private List<string> GetLocalDependents(string id)
+    {
+        return _entries
+            .Where(entry => entry.Dependencies.Contains(id, StringComparer.Ordinal))
+            .Select(entry => entry.Id)
+            .ToList();
+    }
+
+    private void CollectRemovalOrder(Entry entry, HashSet<string> visited, List<Entry> result)
+    {
+        if (!visited.Add(entry.Id))
+        {
+            return;
+        }
+        foreach (var dependentId in GetLocalDependents(entry.Id))
+        {
+            CollectRemovalOrder(_entriesById[dependentId], visited, result);
+        }
+        result.Add(entry);
+    }
+
+    private static List<string> NormalizeDependencies(string id, IEnumerable<string>? dependencies)
+    {
+        if (dependencies == null)
+        {
+            return [];
+        }
+        var result = new List<string>();
+        foreach (var rawDependency in dependencies)
+        {
+            var dependency = rawDependency?.Trim() ?? string.Empty;
+            if (dependency.Length == 0 || result.Contains(dependency, StringComparer.Ordinal))
+            {
+                continue;
+            }
+            if (string.Equals(id, dependency, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"System '{id}' cannot depend on itself.");
+            }
+            result.Add(dependency);
+        }
+        return result;
+    }
+
+    private void InvalidateOrder()
+    {
+        _orderedEntries = null;
+    }
+
+    private sealed class Entry(
+        string id,
+        string phase,
+        object context,
+        Action init,
+        Action<float> tick,
+        Action shutdown,
+        List<string> dependencies
+    )
+    {
+        public string Id { get; } = id;
+        public string Phase { get; } = phase;
+        public object Context { get; } = context;
+        public Action Init { get; } = init;
+        public Action<float> Tick { get; } = tick;
+        public Action Shutdown { get; } = shutdown;
+        public List<string> Dependencies { get; } = dependencies;
+        public bool Initialized { get; set; }
+    }
 }

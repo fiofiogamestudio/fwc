@@ -80,33 +80,36 @@ func open(
 
 
 func has(id: StringName) -> bool:
-	return _forms.has(id)
+	return _is_live_form(_forms.get(id, null))
 
 
 func get_form(id: StringName) -> Variant:
-	return _forms.get(id, null)
+	var form: Variant = _forms.get(id, null)
+	return form if _is_live_form(form) else null
 
 
 func top_form(layer: StringName) -> Variant:
 	var stack: Array = _layer_stacks.get(layer, [])
+	var removed_stale := false
 	while not stack.is_empty():
 		var id: StringName = StringName(stack[-1])
 		var form: Variant = get_form(id)
-		if form != null and is_instance_valid(form):
+		if _is_live_form(form):
 			_layer_stacks[layer] = stack
+			if layer == LAYER_SCREEN and removed_stale:
+				form.visible = true
 			return form
 		stack.pop_back()
 		_forms.erase(id)
+		removed_stale = true
 	_layer_stacks[layer] = stack
 	_update_layer_input(layer)
 	return null
 
 
 func close(id: StringName) -> void:
-	if not _forms.has(id):
-		return
 	var form: Variant = _forms.get(id, null)
-	if form == null or not is_instance_valid(form):
+	if not _is_live_form(form):
 		_forms.erase(id)
 		var affected_screen: bool = false
 		for layer_id in _LAYER_ORDER:
@@ -120,11 +123,14 @@ func close(id: StringName) -> void:
 		return
 
 	var layer: StringName = form.layer()
+	_forms.erase(id)
+	_remove_from_stack(layer, id)
+	var parent := form.get_parent() as Node
+	if parent != null:
+		parent.remove_child(form)
 	form.clear()
 	if is_instance_valid(form):
 		form.queue_free()
-	_forms.erase(id)
-	_remove_from_stack(layer, id)
 
 	if layer == LAYER_SCREEN:
 		var previous: Variant = top_form(LAYER_SCREEN)
@@ -160,6 +166,9 @@ func _open(
 	if layer_root_node == null:
 		push_error("FUI layer '%s' is not ready." % String(layer))
 		return null
+	if id == &"":
+		push_error("FUI form id cannot be empty.")
+		return null
 	if packed_scene == null:
 		push_error("FUI cannot open an empty form scene.")
 		return null
@@ -178,11 +187,12 @@ func _open(
 	layer_root_node.add_child(form)
 	form.assign_runtime(self, layer, id)
 	form.setup(context, props)
-	if not form.is_setup():
+	if not _is_live_form(form) or not form.is_setup() or form.get_parent() != layer_root_node:
 		push_error("FUI form '%s' failed to finish setup." % String(id))
-		if form.get_parent():
+		if is_instance_valid(form) and form.get_parent():
 			form.get_parent().remove_child(form)
-		form.queue_free()
+		if is_instance_valid(form):
+			form.queue_free()
 		return null
 
 	close(id)
@@ -237,6 +247,12 @@ func _update_layer_input(layer: StringName) -> void:
 		return
 	var stack: Array = _layer_stacks.get(layer, [])
 	node.mouse_filter = Control.MOUSE_FILTER_STOP if not stack.is_empty() else Control.MOUSE_FILTER_IGNORE
+
+
+func _is_live_form(form: Variant) -> bool:
+	if typeof(form) != TYPE_OBJECT or not is_instance_valid(form):
+		return false
+	return form is Node and not (form as Node).is_queued_for_deletion()
 
 
 func _layer_name(layer: StringName) -> String:

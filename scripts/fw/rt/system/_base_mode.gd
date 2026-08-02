@@ -19,7 +19,10 @@ func enter(root: Variant, context: Variant = null) -> bool:
 		return false
 	_root = root
 	_context = context
-	_system_manager = SystemManagerScript.new()
+	var parent_manager: Variant = null
+	if _root.has_method("app_system_manager"):
+		parent_manager = _root.app_system_manager()
+	_system_manager = SystemManagerScript.new(parent_manager)
 	_is_entered = true
 	_enter_error = ""
 	return true
@@ -45,11 +48,17 @@ func exit() -> void:
 	_is_entered = false
 
 
-func add_system(id: StringName, system: Variant, context: Variant = null, phase: StringName = &"") -> bool:
+func add_system(
+	id: StringName,
+	system: Variant,
+	context: Variant = null,
+	phase: StringName = &"",
+	dependencies: Array = []
+) -> bool:
 	if _system_manager == null:
 		push_error("Mode system manager is not ready.")
 		return false
-	return _system_manager.add_system(id, system, context, phase)
+	return _system_manager.add_system(id, system, context, phase, dependencies)
 
 
 func set_system_phase_order(order: Array) -> void:
@@ -85,6 +94,16 @@ func enter_error() -> String:
 	return _enter_error
 
 
+func system_manager() -> Variant:
+	return _system_manager
+
+
+func system_context(id: StringName) -> Variant:
+	if _system_manager == null:
+		return null
+	return _system_manager.get_context(id)
+
+
 func mode_host() -> Node:
 	return _root.mode_host()
 
@@ -105,5 +124,21 @@ func ui() -> Variant:
 	return _root.ui()
 
 
+func events() -> Variant:
+	return _root.events()
+
+
 func audio() -> Variant:
 	return _root.audio()
+
+
+func display() -> Variant:
+	return _root.display()
+
+
+func debug_service() -> Variant:
+	return _root.debug_service()
+
+
+func log_service() -> Variant:
+	return _root.log_service()

@@ -5,6 +5,7 @@ var _prefabs: Dictionary = {}
 var _generations: Dictionary = {}
 var _free: Dictionary = {}
 var _active: Dictionary = {}
+var _max_free: Dictionary = {}
 var _default_parent: Node = null
 
 
@@ -12,13 +13,18 @@ func setup(default_parent: Node) -> void:
 	_default_parent = default_parent
 
 
-func register_prefab(key: String, packed_scene: PackedScene, warmup: int = 0) -> void:
+func register_prefab(
+	key: String,
+	packed_scene: PackedScene,
+	warmup: int = 0,
+	max_free: int = -1
+) -> bool:
 	if key.is_empty():
 		push_error("FPool prefab key cannot be empty.")
-		return
+		return false
 	if packed_scene == null:
 		push_error("FPool cannot register empty prefab for key: %s" % key)
-		return
+		return false
 
 	var changed: bool = not _prefabs.has(key) or _prefabs[key] != packed_scene
 	if changed and _prefabs.has(key):
@@ -26,17 +32,29 @@ func register_prefab(key: String, packed_scene: PackedScene, warmup: int = 0) ->
 	_generations[key] = int(_generations.get(key, 0)) + (1 if changed else 0)
 
 	_prefabs[key] = packed_scene
+	_max_free[key] = max_free
 	if not _free.has(key):
 		_free[key] = []
+	_trim_bucket(key)
+	return self.warmup(key, warmup)
 
-	var bucket: Array = _free[key]
-	var target_count: int = max(warmup, 0)
+
+func warmup(key: String, count: int) -> bool:
+	if not _prefabs.has(key):
+		push_error("FPool missing prefab for key: %s" % key)
+		return false
+	var bucket: Array = _free.get(key, [])
+	var target_count := maxi(count, 0)
+	var limit := int(_max_free.get(key, -1))
+	if limit >= 0:
+		target_count = mini(target_count, limit)
 	while bucket.size() < target_count:
 		var node: Node = _instantiate(key)
 		if node == null:
-			break
+			return false
 		bucket.append(node)
 	_free[key] = bucket
+	return true
 
 
 func spawn(
@@ -71,19 +89,19 @@ func spawn(
 	return node
 
 
-func recycle(node: Node) -> void:
+func recycle(node: Node) -> bool:
 	if node == null or not is_instance_valid(node):
-		return
+		return false
 	var instance_id: int = node.get_instance_id()
 	if not _active.has(instance_id) or _active[instance_id] != node:
 		push_warning("FPool ignored recycle for a node that is not active.")
-		return
+		return false
 	_active.erase(instance_id)
 	if not node.has_meta("_pool_key"):
 		if node.has_method("clear"):
 			node.clear()
 		node.queue_free()
-		return
+		return true
 
 	var key: String = String(node.get_meta("_pool_key"))
 	if node.has_method("clear"):
@@ -95,10 +113,23 @@ func recycle(node: Node) -> void:
 	if not _prefabs.has(key) or node_generation != current_generation:
 		if not node.is_queued_for_deletion():
 			node.queue_free()
-		return
+		return true
 	if not _free.has(key):
 		_free[key] = []
+	var limit := int(_max_free.get(key, -1))
+	if limit >= 0 and _free[key].size() >= limit:
+		node.queue_free()
+		return true
 	_free[key].append(node)
+	return true
+
+
+func owns(node: Node) -> bool:
+	return (
+		node != null
+		and is_instance_valid(node)
+		and _active.get(node.get_instance_id(), null) == node
+	)
 
 
 func flush(key: String = "") -> void:
@@ -114,6 +145,38 @@ func flush(key: String = "") -> void:
 	_active.clear()
 	_prefabs.clear()
 	_generations.clear()
+	_max_free.clear()
+
+
+func unregister_prefab(key: String, recycle_active: bool = false) -> void:
+	if recycle_active:
+		_flush_active(key)
+	_flush_bucket(key)
+	_prefabs.erase(key)
+	_generations.erase(key)
+	_max_free.erase(key)
+
+
+func clear_active() -> void:
+	_flush_active()
+
+
+func stats(key: String = "") -> Dictionary:
+	if key != "":
+		return {
+			"registered": _prefabs.has(key),
+			"active": _active_count(key),
+			"free": _valid_free_count(key),
+			"max_free": int(_max_free.get(key, -1)),
+		}
+	var free_total := 0
+	for bucket_key in _free.keys():
+		free_total += _valid_free_count(String(bucket_key))
+	return {
+		"registered": _prefabs.size(),
+		"active": _active.size(),
+		"free": free_total,
+	}
 
 
 func _instantiate(key: String) -> Node:
@@ -157,6 +220,21 @@ func _flush_bucket(key: String) -> void:
 	_free.erase(key)
 
 
+func _trim_bucket(key: String) -> void:
+	var limit := int(_max_free.get(key, -1))
+	if limit < 0:
+		return
+	var bucket: Array = _free.get(key, [])
+	while bucket.size() > limit:
+		var item: Variant = bucket.pop_back()
+		if item is Node and is_instance_valid(item):
+			var node := item as Node
+			if node.get_parent() != null:
+				node.get_parent().remove_child(node)
+			node.queue_free()
+	_free[key] = bucket
+
+
 func _flush_active(key: String = "") -> void:
 	for raw_id in _active.keys():
 		var raw_node: Variant = _active[raw_id]
@@ -171,3 +249,23 @@ func _flush_active(key: String = "") -> void:
 		if not node.is_queued_for_deletion():
 			node.queue_free()
 		_active.erase(raw_id)
+
+
+func _active_count(key: String) -> int:
+	var count := 0
+	for raw_node in _active.values():
+		if (
+			raw_node is Node
+			and is_instance_valid(raw_node)
+			and String(raw_node.get_meta("_pool_key", "")) == key
+		):
+			count += 1
+	return count
+
+
+func _valid_free_count(key: String) -> int:
+	var count := 0
+	for item in _free.get(key, []):
+		if item is Node and is_instance_valid(item) and not item.is_queued_for_deletion():
+			count += 1
+	return count

@@ -3,12 +3,21 @@
 		"base": "Node",
 		"constants": [],
 		"methods": [
+			"add_app_system(id:StringName, system:Nil, context:Nil, phase:StringName, dependencies:Array)->bool;defaults=[null, &\"\", null]",
+			"app_system_manager()->Nil;defaults=[]",
 			"asset()->Nil;defaults=[]",
 			"audio()->Nil;defaults=[]",
+			"bind_app_system_refs(refs:Dictionary)->bool;defaults=[]",
+			"debug_service()->Nil;defaults=[]",
+			"display()->Nil;defaults=[]",
+			"events()->Nil;defaults=[]",
+			"log_service()->Nil;defaults=[]",
 			"mode_host()->Node;defaults=[]",
 			"on_app_ready()->Nil;defaults=[]",
+			"on_app_setup()->Nil;defaults=[]",
 			"on_mode_switch_failed(_mode:Nil)->Nil;defaults=[]",
 			"pool()->Nil;defaults=[]",
+			"set_app_system_phase_order(order:Array)->Nil;defaults=[]",
 			"switch_mode(mode:Nil, context:Nil)->Nil;defaults=[null]",
 			"ui()->Nil;defaults=[]",
 			"ui_root()->CanvasLayer;defaults=[]"
@@ -20,20 +29,26 @@
 		"base": "RefCounted",
 		"constants": [],
 		"methods": [
-			"add_system(id:StringName, system:Nil, context:Nil, phase:StringName)->bool;defaults=[null, &\"\"]",
+			"add_system(id:StringName, system:Nil, context:Nil, phase:StringName, dependencies:Array)->bool;defaults=[null, &\"\", null]",
 			"asset()->Nil;defaults=[]",
 			"audio()->Nil;defaults=[]",
 			"bind_system_refs(refs:Dictionary)->bool;defaults=[]",
+			"debug_service()->Nil;defaults=[]",
+			"display()->Nil;defaults=[]",
 			"enter(root:Nil, context:Nil)->bool;defaults=[null]",
 			"enter_error()->String;defaults=[]",
+			"events()->Nil;defaults=[]",
 			"exit()->Nil;defaults=[]",
 			"fail_enter(message:String)->bool;defaults=[]",
 			"handle_input(_event:InputEvent)->Nil;defaults=[]",
 			"init_systems()->bool;defaults=[]",
 			"is_entered()->bool;defaults=[]",
+			"log_service()->Nil;defaults=[]",
 			"mode_host()->Node;defaults=[]",
 			"pool()->Nil;defaults=[]",
 			"set_system_phase_order(order:Array)->Nil;defaults=[]",
+			"system_context(id:StringName)->Nil;defaults=[]",
+			"system_manager()->Nil;defaults=[]",
 			"tick(dt:float)->Nil;defaults=[]",
 			"ui()->Nil;defaults=[]",
 			"ui_root()->Node;defaults=[]"
@@ -56,22 +71,94 @@
 		"base": "RefCounted",
 		"constants": [],
 		"methods": [
-			"load(path:String)->Resource;defaults=[]",
-			"unload(path:String)->Nil;defaults=[\"\"]"
+			"acquire(path:String, expected_type:Nil)->RefCounted;defaults=[null]",
+			"acquire_async(path:String, expected_type:Nil)->RefCounted;defaults=[null]",
+			"cached_paths()->Array[String];defaults=[]",
+			"exists(path:String, type_hint:String)->bool;defaults=[\"\"]",
+			"has_cached(path:String)->bool;defaults=[]",
+			"instantiate(path:String)->Node;defaults=[]",
+			"load(path:String, expected_type:Nil)->Resource;defaults=[null]",
+			"load_async(path:String, expected_type:Nil)->Resource;defaults=[null]",
+			"register_provider(source:StringName, provider:Nil)->bool;defaults=[]",
+			"release(path:String)->bool;defaults=[]",
+			"reload(path:String, expected_type:Nil)->Resource;defaults=[null]",
+			"require(path:String, expected_type:Nil)->Resource;defaults=[null]",
+			"stats()->Dictionary;defaults=[]",
+			"try_load(path:String, expected_type:Nil)->Resource;defaults=[null]",
+			"unload(path:String)->Nil;defaults=[\"\"]",
+			"unregister_provider(source:StringName, unload_assets:bool, force:bool)->bool;defaults=[true, false]"
 		],
 		"properties": [],
 		"signals": []
 	},
 	"FAudio": {
 		"base": "RefCounted",
-		"constants": [],
+		"constants": [
+			"KIND_BGM:StringName=&\"bgm\"",
+			"KIND_SFX:StringName=&\"sfx\"",
+			"SILENT_DB:float=-80.0"
+		],
 		"methods": [
+			"bus_volume_linear(bus:StringName)->float;defaults=[]",
 			"clear()->Nil;defaults=[]",
 			"create_player_3d(parent:Node, player_name:StringName, bus:StringName)->AudioStreamPlayer3D;defaults=[&\"Master\"]",
+			"current_bgm_id()->StringName;defaults=[]",
+			"has_stream(id:StringName)->bool;defaults=[]",
+			"is_bus_muted(bus:StringName)->bool;defaults=[]",
 			"play_3d(player:AudioStreamPlayer3D, stream:AudioStream, volume_db:float, pitch_scale:float, max_distance:float, unit_size:float)->bool;defaults=[0.0, 1.0, 12.0, 1.0]",
-			"setup(host:Node)->Nil;defaults=[]"
+			"play_bgm(id:StringName, fade_in:float, fade_out:float, restart:bool)->bool;defaults=[0.0, 0.0, false]",
+			"play_loop(id:StringName, volume_db_offset:float, pitch_scale:float)->AudioStreamPlayer;defaults=[0.0, 1.0]",
+			"play_sfx(id:StringName, volume_db_offset:float, pitch_scale:float, loop:bool)->AudioStreamPlayer;defaults=[0.0, 1.0, false]",
+			"register_bgm(id:StringName, stream:AudioStream, bus:StringName, volume_db:float)->bool;defaults=[&\"Master\", 0.0]",
+			"register_bgm_intro_loop(id:StringName, intro_stream:AudioStream, loop_stream:AudioStream, bus:StringName, volume_db:float)->bool;defaults=[&\"Master\", 0.0]",
+			"register_sfx(id:StringName, stream:AudioStream, bus:StringName, volume_db:float, max_instances:int)->bool;defaults=[&\"Master\", 0.0, 0]",
+			"register_stream(id:StringName, stream:AudioStream, kind:StringName, bus:StringName, volume_db:float, max_instances:int, loop_stream:AudioStream)->bool;defaults=[&\"sfx\", &\"Master\", 0.0, 0, null]",
+			"registered_ids()->Array[StringName];defaults=[]",
+			"set_bus_muted(bus:StringName, muted:bool)->bool;defaults=[]",
+			"set_bus_volume_linear(bus:StringName, value:float)->bool;defaults=[]",
+			"setup(host:Node)->Nil;defaults=[]",
+			"stop_all_sfx(fade_out:float)->Nil;defaults=[0.0]",
+			"stop_bgm(fade_out:float)->Nil;defaults=[0.0]",
+			"stop_sfx(player:AudioStreamPlayer, fade_out:float)->Nil;defaults=[0.0]",
+			"stop_sfx_by_id(id:StringName, fade_out:float)->Nil;defaults=[0.0]",
+			"stream_config(id:StringName)->Dictionary;defaults=[]",
+			"unregister_stream(id:StringName)->Nil;defaults=[]"
 		],
-		"properties": [],
+		"properties": [
+			"max_sfx_players:int"
+		],
+		"signals": []
+	},
+	"FAutoFitLabel": {
+		"base": "Label",
+		"constants": [],
+		"methods": [
+			"fit_text()->Nil;defaults=[]"
+		],
+		"properties": [
+			"fit_on_ready:bool",
+			"fit_on_resize:bool",
+			"maximum_font_size:int[1.0,256.0,1.0]",
+			"minimum_font_size:int[1.0,256.0,1.0]"
+		],
+		"signals": []
+	},
+	"FAutoFitRichTextLabel": {
+		"base": "RichTextLabel",
+		"constants": [],
+		"methods": [
+			"clear_fit_text_renderer()->Nil;defaults=[]",
+			"fit_text()->Nil;defaults=[]",
+			"set_fit_text_renderer(source_text:String, renderer:Callable)->Nil;defaults=[]"
+		],
+		"properties": [
+			"fit_on_ready:bool",
+			"fit_on_resize:bool",
+			"maximum_font_size:int[1.0,256.0,1.0]",
+			"measurement_height_tolerance:float[1.0,2.0,0.05]",
+			"minimum_font_size:int[1.0,256.0,1.0]",
+			"quoted_text_scale:float[0.1,1.0,0.05]"
+		],
 		"signals": []
 	},
 	"FBinding": {
@@ -105,6 +192,22 @@
 		"properties": [],
 		"signals": []
 	},
+	"FDebug": {
+		"base": "RefCounted",
+		"constants": [],
+		"methods": [
+			"can_enable()->bool;defaults=[]",
+			"clear()->Nil;defaults=[]",
+			"is_enabled()->bool;defaults=[]",
+			"set_enabled(value:bool)->bool;defaults=[]",
+			"setup(initial_enabled:bool, allow_in_release:bool)->Nil;defaults=[false, false]",
+			"toggle()->bool;defaults=[]"
+		],
+		"properties": [],
+		"signals": [
+			"changed(enabled:bool)"
+		]
+	},
 	"FDialog": {
 		"base": "FForm",
 		"constants": [],
@@ -116,6 +219,57 @@
 		"signals": [
 			"cancelled()",
 			"confirmed()"
+		]
+	},
+	"FDisplay": {
+		"base": "RefCounted",
+		"constants": [
+			"DEFAULT_SIZE_OPTIONS:Array=[Vector2i(1280, 720), Vector2i(1600, 900), Vector2i(1920, 1080), Vector2i(2560, 1440), Vector2i(3840, 2160)]"
+		],
+		"methods": [
+			"apply(save:bool)->bool;defaults=[true]",
+			"begin_edit()->Dictionary;defaults=[]",
+			"cancel()->bool;defaults=[]",
+			"configure_persistence(path:String, section:String)->Nil;defaults=[\"display\"]",
+			"current_settings()->Dictionary;defaults=[]",
+			"has_changes()->bool;defaults=[]",
+			"has_next_size()->bool;defaults=[]",
+			"has_previous_size()->bool;defaults=[]",
+			"load_saved(apply_now:bool)->bool;defaults=[false]",
+			"pending_settings()->Dictionary;defaults=[]",
+			"pending_size()->Vector2i;defaults=[]",
+			"pending_size_text(separator:String)->String;defaults=[\" x \"]",
+			"save_current()->bool;defaults=[]",
+			"set_pending_fullscreen(value:bool)->Nil;defaults=[]",
+			"set_pending_size(value:Vector2i)->Nil;defaults=[]",
+			"set_pending_vsync(value:bool)->Nil;defaults=[]",
+			"set_size_options(values:Array)->Nil;defaults=[]",
+			"setup(window:Window, size_options:Array, settings_path:String, auto_load:bool)->Nil;defaults=[null, \"\", true]",
+			"size_options()->Array[Vector2i];defaults=[]",
+			"step_pending_size(step:int)->bool;defaults=[]"
+		],
+		"properties": [],
+		"signals": [
+			"applied(settings:Dictionary)",
+			"changed(settings:Dictionary)"
+		]
+	},
+	"FEventBus": {
+		"base": "RefCounted",
+		"constants": [],
+		"methods": [
+			"clear(kind:StringName)->Nil;defaults=[&\"\"]",
+			"emit_event(kind:StringName, payload:Nil)->int;defaults=[null]",
+			"listener_count(kind:StringName)->int;defaults=[&\"\"]",
+			"off(kind:StringName, callable:Callable)->int;defaults=[]",
+			"on(kind:StringName, callable:Callable, priority:int)->int;defaults=[0]",
+			"once(kind:StringName, callable:Callable, priority:int)->int;defaults=[0]",
+			"subscribe(kind:StringName, callable:Callable, once:bool, priority:int)->int;defaults=[false, 0]",
+			"unsubscribe(subscription_id:int)->bool;defaults=[]"
+		],
+		"properties": [],
+		"signals": [
+			"published(kind:StringName, payload:Nil)"
 		]
 	},
 	"FForm": {
@@ -243,6 +397,33 @@
 		],
 		"signals": []
 	},
+	"FLog": {
+		"base": "RefCounted",
+		"constants": [
+			"Level:Dictionary={\n\"DEBUG\": 0,\n\"ERROR\": 3,\n\"INFO\": 1,\n\"WARNING\": 2\n}"
+		],
+		"methods": [
+			"clear()->Nil;defaults=[]",
+			"clear_category_level(category:StringName)->Nil;defaults=[]",
+			"debug(category:StringName, message:String, data:Dictionary)->Dictionary;defaults=[null]",
+			"error(category:StringName, message:String, data:Dictionary)->Dictionary;defaults=[null]",
+			"info(category:StringName, message:String, data:Dictionary)->Dictionary;defaults=[null]",
+			"is_enabled(level:FLog.Level, category:StringName)->bool;defaults=[&\"\"]",
+			"level_name(level:FLog.Level)->String;defaults=[]",
+			"recent_entries(limit:int)->Array[Dictionary];defaults=[-1]",
+			"set_category_level(category:StringName, level:FLog.Level)->Nil;defaults=[]",
+			"warning(category:StringName, message:String, data:Dictionary)->Dictionary;defaults=[null]",
+			"write(level:FLog.Level, category:StringName, message:String, data:Dictionary)->Dictionary;defaults=[null]"
+		],
+		"properties": [
+			"history_limit:int",
+			"minimum_level:FLog.Level",
+			"output_enabled:bool"
+		],
+		"signals": [
+			"written(entry:Dictionary)"
+		]
+	},
 	"FNodePool": {
 		"base": "FPool",
 		"constants": [],
@@ -254,11 +435,16 @@
 		"base": "RefCounted",
 		"constants": [],
 		"methods": [
+			"clear_active()->Nil;defaults=[]",
 			"flush(key:String)->Nil;defaults=[\"\"]",
-			"recycle(node:Node)->Nil;defaults=[]",
-			"register_prefab(key:String, packed_scene:PackedScene, warmup:int)->Nil;defaults=[0]",
+			"owns(node:Node)->bool;defaults=[]",
+			"recycle(node:Node)->bool;defaults=[]",
+			"register_prefab(key:String, packed_scene:PackedScene, warmup:int, max_free:int)->bool;defaults=[0, -1]",
 			"setup(default_parent:Node)->Nil;defaults=[]",
-			"spawn(key:String, parent:Node, owner:Nil, props:Dictionary)->Node;defaults=[null, null, null]"
+			"spawn(key:String, parent:Node, owner:Nil, props:Dictionary)->Node;defaults=[null, null, null]",
+			"stats(key:String)->Dictionary;defaults=[\"\"]",
+			"unregister_prefab(key:String, recycle_active:bool)->Nil;defaults=[false]",
+			"warmup(key:String, count:int)->bool;defaults=[]"
 		],
 		"properties": [],
 		"signals": []
@@ -307,6 +493,30 @@
 		"properties": [],
 		"signals": [
 			"changed()"
+		]
+	},
+	"FStateMachine": {
+		"base": "RefCounted",
+		"constants": [
+			"MAX_CHAINED_TRANSITIONS:int=32"
+		],
+		"methods": [
+			"clear()->Nil;defaults=[]",
+			"current_state()->Nil;defaults=[]",
+			"is_active()->bool;defaults=[]",
+			"register_state(state:Nil, on_enter:Callable, on_tick:Callable, on_exit:Callable)->Nil;defaults=[Callable(), Callable(), Callable()]",
+			"register_transition(from:Nil, to:Nil, action:Callable, guard:Callable)->Nil;defaults=[Callable(), Callable()]",
+			"setup(context:Nil)->Nil;defaults=[null]",
+			"start(initial:Nil, payload:Nil)->bool;defaults=[null]",
+			"stop()->Nil;defaults=[]",
+			"tick(dt:float)->Nil;defaults=[]",
+			"transition_to(target:Nil, payload:Nil)->bool;defaults=[null]"
+		],
+		"properties": [],
+		"signals": [
+			"started(state:Nil, payload:Nil)",
+			"stopped(previous:Nil)",
+			"transitioned(previous:Nil, current:Nil, payload:Nil)"
 		]
 	},
 	"FTabs": {
@@ -370,14 +580,9 @@
 		"signals": []
 	},
 	"FUIEvent": {
-		"base": "RefCounted",
+		"base": "FEventBus",
 		"constants": [],
-		"methods": [
-			"clear()->Nil;defaults=[]",
-			"emit_event(kind:StringName, payload:Nil)->Nil;defaults=[null]",
-			"off(kind:StringName, callable:Callable)->Nil;defaults=[]",
-			"on(kind:StringName, callable:Callable)->Nil;defaults=[]"
-		],
+		"methods": [],
 		"properties": [],
 		"signals": [
 			"emitted(kind:StringName, payload:Nil)"
@@ -502,20 +707,31 @@
 			"LifecycleState:Dictionary={\n\"CREATED\": 0,\n\"FAULTED\": 3,\n\"INITIALIZING\": 1,\n\"RUNNING\": 2,\n\"STOPPED\": 5,\n\"STOPPING\": 4\n}"
 		],
 		"methods": [
-			"add_system(id:StringName, system:Nil, context:Nil, phase:StringName)->bool;defaults=[null, &\"\"]",
+			"add_system(id:StringName, system:Nil, context:Nil, phase:StringName, dependencies:Array)->bool;defaults=[null, &\"\", null]",
 			"bind_refs(graph_refs:Dictionary)->bool;defaults=[]",
 			"get_context(id:StringName)->Nil;defaults=[]",
 			"get_system(index:int)->Nil;defaults=[]",
+			"get_system_by_id(id:StringName)->Nil;defaults=[]",
+			"has_local_system(id:StringName)->bool;defaults=[]",
 			"has_system(id:StringName)->bool;defaults=[]",
 			"init_all()->bool;defaults=[]",
 			"is_running()->bool;defaults=[]",
+			"is_started()->bool;defaults=[]",
+			"is_system_initialized(id:StringName)->bool;defaults=[]",
+			"last_error()->String;defaults=[]",
 			"lifecycle_state()->SystemManager.LifecycleState;defaults=[]",
-			"remove_system(system:Nil)->bool;defaults=[]",
+			"remove_system(system:Nil, cascade:bool)->bool;defaults=[false]",
+			"remove_system_by_id(id:StringName, cascade:bool)->bool;defaults=[false]",
+			"set_dependencies(id:StringName, dependencies:Array)->bool;defaults=[]",
 			"set_phase_order(order:Array)->Nil;defaults=[]",
 			"shutdown_all()->Nil;defaults=[]",
+			"snapshots(include_parent:bool)->Array[Dictionary];defaults=[true]",
 			"tick(dt:float)->Nil;defaults=[]"
 		],
 		"properties": [],
-		"signals": []
+		"signals": [
+			"system_added(id:StringName)",
+			"system_removed(id:StringName)"
+		]
 	}
 }

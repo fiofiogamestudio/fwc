@@ -20,6 +20,81 @@ type static class Fw.Rt.Config.ConfigPack
   const System.Int32 Version = 1
   static method System.Byte[] Encode(System.ReadOnlySpan<System.Byte> payload, System.ReadOnlySpan<System.Byte> schemaHash)
   static method System.Collections.Generic.Dictionary<System.String,System.Text.Json.JsonElement> Decode(System.ReadOnlyMemory<System.Byte> pack, System.String expectedSchemaHash)
+type sealed class Fw.Rt.Events.EventBus<TKey>
+  ctor(System.Collections.Generic.IEqualityComparer<TKey> comparer = null)
+  method Fw.Rt.Events.EventSubscription Subscribe(TKey key, System.Action callback, System.Boolean once = false, System.Int32 priority = 0)
+  method Fw.Rt.Events.EventSubscription Subscribe<TPayload>(TKey key, System.Action<TPayload> callback, System.Boolean once = false, System.Int32 priority = 0)
+  method System.Boolean Unsubscribe(System.Int64 subscriptionId)
+  method System.Int32 ListenerCount(TKey key)
+  method System.Int32 Publish(TKey key)
+  method System.Int32 Publish<TPayload>(TKey key, TPayload payload)
+  method System.Void Clear()
+type sealed class Fw.Rt.Events.EventSubscription : System.IDisposable
+  method System.Void Dispose()
+  property System.Boolean IsActive {get;}
+  property System.Int64 Id {get;}
+type interface Fw.Rt.Logging.ILogSink
+  method System.Void Write(Fw.Rt.Logging.LogEntry entry)
+type sealed class Fw.Rt.Logging.LogBuffer : Fw.Rt.Logging.ILogSink
+  ctor()
+  event System.Action<Fw.Rt.Logging.LogEntry> Written
+  method Fw.Rt.Logging.LogEntry Add(Fw.Rt.Logging.LogLevel level, System.String category, System.String message, System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> data = null)
+  method System.Boolean ClearCategoryLevel(System.String category)
+  method System.Boolean IsEnabled(Fw.Rt.Logging.LogLevel level, System.String category = "")
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Logging.LogEntry> Recent(System.Int32 limit = -1)
+  method System.Void Clear()
+  method System.Void SetCategoryLevel(System.String category, Fw.Rt.Logging.LogLevel level)
+  method System.Void Write(Fw.Rt.Logging.LogEntry entry)
+  property Fw.Rt.Logging.ILogSink ForwardTo {get;set;}
+  property Fw.Rt.Logging.LogLevel MinimumLevel {get;set;}
+  property System.Int32 Capacity {get;set;}
+type sealed class Fw.Rt.Logging.LogEntry : System.IEquatable<Fw.Rt.Logging.LogEntry>
+  ctor(System.Int64 Sequence, System.DateTimeOffset Timestamp, Fw.Rt.Logging.LogLevel Level, System.String Category, System.String Message, System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Data)
+  method Fw.Rt.Logging.LogEntry <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Logging.LogEntry other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int64 Sequence, out System.DateTimeOffset Timestamp, out Fw.Rt.Logging.LogLevel Level, out System.String Category, out System.String Message, out System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Data)
+  property Fw.Rt.Logging.LogLevel Level {get;init;}
+  property System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Data {get;init;}
+  property System.DateTimeOffset Timestamp {get;init;}
+  property System.Int64 Sequence {get;init;}
+  property System.String Category {get;init;}
+  property System.String Message {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Logging.LogEntry left, Fw.Rt.Logging.LogEntry right)
+  static method System.Boolean op_Inequality(Fw.Rt.Logging.LogEntry left, Fw.Rt.Logging.LogEntry right)
+type enum Fw.Rt.Logging.LogLevel : System.Int32
+  const Fw.Rt.Logging.LogLevel Debug = 0
+  const Fw.Rt.Logging.LogLevel Error = 3
+  const Fw.Rt.Logging.LogLevel Info = 1
+  const Fw.Rt.Logging.LogLevel Warning = 2
+type sealed class Fw.Rt.Randomness.DeterministicRandomStream
+  ctor(System.Int32 seed, System.Int64 step = 0)
+  method Fw.Rt.Randomness.DeterministicRandomStream Fork(System.String channel, System.String key = null)
+  method System.Double NextDouble()
+  method System.Int32 Next(System.Int32 maxExclusive)
+  method System.Int32 Next(System.Int32 minInclusive, System.Int32 maxExclusive)
+  method System.Int64 NextInt64(System.Int64 maxExclusive)
+  method System.Int64 NextInt64(System.Int64 minInclusive, System.Int64 maxExclusive)
+  property Fw.Rt.Randomness.RandomStreamState State {get;}
+  property System.Int32 Seed {get;}
+  property System.Int64 Step {get;}
+  static method System.Int32 CreateRuntimeSeed()
+type static class Fw.Rt.Randomness.RandomPicker
+  static method System.Void Shuffle<T>(System.Collections.Generic.IList<T> values, Fw.Rt.Randomness.DeterministicRandomStream random)
+  static method T PickWeighted<T>(System.Collections.Generic.IReadOnlyList<T> items, Fw.Rt.Randomness.DeterministicRandomStream random, System.Func<T,System.Int64> weightOf, System.Func<T,System.Boolean> predicate = null)
+type struct Fw.Rt.Randomness.RandomStreamState : System.IEquatable<Fw.Rt.Randomness.RandomStreamState>
+  ctor(System.Int32 Seed, System.Int64 Step)
+  method System.Boolean Equals(Fw.Rt.Randomness.RandomStreamState other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32 Seed, out System.Int64 Step)
+  property System.Int32 Seed {get;init;}
+  property System.Int64 Step {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Randomness.RandomStreamState left, Fw.Rt.Randomness.RandomStreamState right)
+  static method System.Boolean op_Inequality(Fw.Rt.Randomness.RandomStreamState left, Fw.Rt.Randomness.RandomStreamState right)
 type sealed class Fw.Rt.Rooms.RoomDirectoryClient : System.IDisposable
   ctor(System.String baseUrl, System.Net.Http.HttpClient httpClient = null)
   method System.Threading.Tasks.Task HeartbeatAsync(System.String roomId, System.String heartbeatToken, Fw.Rt.Rooms.RoomHeartbeat heartbeat, System.Threading.CancellationToken cancellationToken = null)
@@ -96,21 +171,50 @@ type sealed class Fw.Rt.Rooms.RoomTicketClaims
   property System.String GameId {get;init;}
   property System.String Nonce {get;init;}
   property System.String RoomId {get;init;}
+type sealed class Fw.Rt.State.StateMachine<TState,TContext>
+  ctor(TContext context, System.Collections.Generic.IEqualityComparer<TState> comparer = null)
+  event System.Action<TState,System.Object> Started
+  event System.Action<TState,TState,System.Object> Transitioned
+  event System.Action<TState> Stopped
+  method System.Boolean Start(TState initial, System.Object payload = null)
+  method System.Boolean TryTransition(TState target, System.Object payload = null)
+  method System.Void Clear()
+  method System.Void RegisterState(TState state, System.Action<TContext,System.Object> onEnter = null, System.Action<TContext,System.Single> onTick = null, System.Action<TContext> onExit = null)
+  method System.Void RegisterTransition(TState from, TState to, System.Action<TContext,TState,TState,System.Object> action = null, System.Func<TContext,TState,TState,System.Object,System.Boolean> guard = null)
+  method System.Void Stop()
+  method System.Void Tick(System.Single dt)
+  property System.Boolean IsActive {get;}
+  property TState Current {get;}
 type interface Fw.Rt.Systems.ISystem<TContext>
   method System.Void Init(TContext context)
   method System.Void Shutdown()
   method System.Void Tick(System.Single dt)
+type enum Fw.Rt.Systems.SystemRemoveMode : System.Int32
+  const Fw.Rt.Systems.SystemRemoveMode Cascade = 1
+  const Fw.Rt.Systems.SystemRemoveMode DenyIfReferenced = 0
 type sealed class Fw.Rt.Systems.SystemRuntime
   ctor()
+  ctor(Fw.Rt.Systems.SystemRuntime parent)
+  event System.Action<System.String> SystemAdded
+  event System.Action<System.String> SystemRemoved
   method System.Boolean Has(System.String id)
+  method System.Boolean HasLocal(System.String id)
+  method System.Boolean IsInitialized(System.String id)
+  method System.Boolean Remove(System.String id, Fw.Rt.Systems.SystemRemoveMode mode = DenyIfReferenced)
+  method System.Boolean TryGetContext<TContext>(System.String id, out TContext context)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Systems.SystemSnapshot> GetSnapshots(System.Boolean includeParent = true)
   method System.Void Add<TContext>(System.String id, Fw.Rt.Systems.ISystem<TContext> system, TContext context, System.String phase = "")
+  method System.Void AddWithDependencies<TContext>(System.String id, Fw.Rt.Systems.ISystem<TContext> system, TContext context, System.String phase, System.Collections.Generic.IEnumerable<System.String> dependencies)
   method System.Void InitAll()
+  method System.Void SetDependencies(System.String id, System.Collections.Generic.IEnumerable<System.String> dependencies)
   method System.Void SetPhaseOrder(System.Collections.Generic.IEnumerable<System.String> order)
   method System.Void ShutdownAll()
   method System.Void Tick(System.Single dt)
   method TContext GetContext<TContext>(System.String id)
+  property Fw.Rt.Systems.SystemRuntime Parent {get;}
   property Fw.Rt.Systems.SystemRuntimeState State {get;}
   property System.Boolean IsRunning {get;}
+  property System.Boolean IsStarted {get;}
   property System.Collections.Generic.IReadOnlyList<System.String> PhaseOrder {get;}
 type enum Fw.Rt.Systems.SystemRuntimeState : System.Int32
   const Fw.Rt.Systems.SystemRuntimeState Created = 0
@@ -119,3 +223,19 @@ type enum Fw.Rt.Systems.SystemRuntimeState : System.Int32
   const Fw.Rt.Systems.SystemRuntimeState Running = 2
   const Fw.Rt.Systems.SystemRuntimeState Stopped = 5
   const Fw.Rt.Systems.SystemRuntimeState Stopping = 4
+type sealed class Fw.Rt.Systems.SystemSnapshot : System.IEquatable<Fw.Rt.Systems.SystemSnapshot>
+  ctor(System.String Scope, System.String Id, System.String Phase, System.Boolean Initialized, System.Collections.Generic.IReadOnlyList<System.String> Dependencies, System.Collections.Generic.IReadOnlyList<System.String> Dependents)
+  method Fw.Rt.Systems.SystemSnapshot <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Systems.SystemSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String Scope, out System.String Id, out System.String Phase, out System.Boolean Initialized, out System.Collections.Generic.IReadOnlyList<System.String> Dependencies, out System.Collections.Generic.IReadOnlyList<System.String> Dependents)
+  property System.Boolean Initialized {get;init;}
+  property System.Collections.Generic.IReadOnlyList<System.String> Dependencies {get;init;}
+  property System.Collections.Generic.IReadOnlyList<System.String> Dependents {get;init;}
+  property System.String Id {get;init;}
+  property System.String Phase {get;init;}
+  property System.String Scope {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Systems.SystemSnapshot left, Fw.Rt.Systems.SystemSnapshot right)
+  static method System.Boolean op_Inequality(Fw.Rt.Systems.SystemSnapshot left, Fw.Rt.Systems.SystemSnapshot right)
