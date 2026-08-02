@@ -3,6 +3,8 @@ using System.Text.RegularExpressions;
 
 sealed class ProtoSchema
 {
+    private const int MaxFieldNumber = 536_870_911;
+
     private static readonly HashSet<string> PortableScalarTypes = new(StringComparer.Ordinal)
     {
         "string",
@@ -154,6 +156,16 @@ sealed class ProtoSchema
                     continue;
                 }
 
+                if (Regex.IsMatch(line, @"^reserved\b", RegexOptions.CultureInvariant))
+                {
+                    if (oneofGroup.Length > 0)
+                    {
+                        throw Error(path, lineNo, "reserved declarations are not allowed inside oneof");
+                    }
+                    ParseReserved(path, lineNo, line, currentMessage);
+                    continue;
+                }
+
                 var fieldMatch = Regex.Match(
                     line,
                     @"^(repeated\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\d+)\s*;$",
@@ -183,6 +195,14 @@ sealed class ProtoSchema
                 if (currentMessage.Fields.Any(item => item.Number == number))
                 {
                     throw Error(path, lineNo, $"duplicate field number `{number}` in message `{currentMessage.Name}`");
+                }
+                if (currentMessage.ReservedNames.Any(item => item.Name == name))
+                {
+                    throw Error(path, lineNo, $"field `{name}` is reserved in message `{currentMessage.Name}`");
+                }
+                if (currentMessage.ReservedRanges.Any(item => number >= item.Start && number <= item.End))
+                {
+                    throw Error(path, lineNo, $"field number `{number}` is reserved in message `{currentMessage.Name}`");
                 }
                 currentMessage.Fields.Add(new ProtoField(name, type, repeated, oneofGroup, number, lineNo));
                 continue;
@@ -283,6 +303,105 @@ sealed class ProtoSchema
         }
     }
 
+    private static void ParseReserved(string path, int lineNo, string line, ProtoMessage message)
+    {
+        var match = Regex.Match(line, @"^reserved\s+(.+?)\s*;$", RegexOptions.CultureInvariant);
+        if (!match.Success)
+        {
+            throw Error(path, lineNo, $"unsupported reserved syntax `{line}`");
+        }
+
+        var tokens = match.Groups[1].Value.Split(',').Select(item => item.Trim()).ToArray();
+        if (tokens.Length == 0 || tokens.Any(item => item.Length == 0))
+        {
+            throw Error(path, lineNo, $"unsupported reserved syntax `{line}`");
+        }
+
+        var nameMatches = tokens.Select(item => Regex.Match(
+            item,
+            "^\"([A-Za-z_][A-Za-z0-9_]*)\"$",
+            RegexOptions.CultureInvariant
+        )).ToArray();
+        if (nameMatches.All(item => item.Success))
+        {
+            foreach (var nameMatch in nameMatches)
+            {
+                AddReservedName(path, lineNo, message, nameMatch.Groups[1].Value);
+            }
+            return;
+        }
+
+        var rangeMatches = tokens.Select(item => Regex.Match(
+            item,
+            @"^(\d+)(?:\s+to\s+(\d+|max))?$",
+            RegexOptions.CultureInvariant
+        )).ToArray();
+        if (!rangeMatches.All(item => item.Success))
+        {
+            throw Error(path, lineNo, $"unsupported reserved syntax `{line}`");
+        }
+        foreach (var rangeMatch in rangeMatches)
+        {
+            AddReservedRange(path, lineNo, message, rangeMatch);
+        }
+    }
+
+    private static void AddReservedName(string path, int lineNo, ProtoMessage message, string name)
+    {
+        if (message.ReservedNames.Any(item => item.Name == name))
+        {
+            throw Error(path, lineNo, $"duplicate reserved field name `{name}` in message `{message.Name}`");
+        }
+        if (message.Fields.Any(item => item.Name == name))
+        {
+            throw Error(path, lineNo, $"reserved field name `{name}` conflicts with field `{name}` in message `{message.Name}`");
+        }
+        message.ReservedNames.Add(new ProtoReservedName(name, lineNo));
+    }
+
+    private static void AddReservedRange(
+        string path,
+        int lineNo,
+        ProtoMessage message,
+        Match rangeMatch
+    )
+    {
+        if (!int.TryParse(rangeMatch.Groups[1].Value, out var start))
+        {
+            throw Error(path, lineNo, $"invalid reserved field number `{rangeMatch.Groups[1].Value}`");
+        }
+        var endText = rangeMatch.Groups[2].Value;
+        var end = start;
+        if (endText == "max")
+        {
+            end = MaxFieldNumber;
+        }
+        else if (endText.Length > 0 && !int.TryParse(endText, out end))
+        {
+            throw Error(path, lineNo, $"invalid reserved field number `{endText}`");
+        }
+        ValidateReservedFieldNumber(path, lineNo, start);
+        ValidateReservedFieldNumber(path, lineNo, end);
+        if (start > end)
+        {
+            throw Error(path, lineNo, $"reserved field range `{start} to {end}` is reversed");
+        }
+        if (message.ReservedRanges.Any(item => start <= item.End && end >= item.Start))
+        {
+            throw Error(path, lineNo, $"reserved field range `{start} to {end}` overlaps in message `{message.Name}`");
+        }
+        var conflictingField = message.Fields.FirstOrDefault(item => item.Number >= start && item.Number <= end);
+        if (conflictingField != null)
+        {
+            throw Error(
+                path,
+                lineNo,
+                $"reserved field range `{start} to {end}` conflicts with field `{conflictingField.Name}` in message `{message.Name}`"
+            );
+        }
+        message.ReservedRanges.Add(new ProtoReservedRange(start, end, lineNo));
+    }
+
     private static void ValidateImport(ProtoSchema schema, string sourcePath, int lineNo, string importPath)
     {
         var portable = importPath.Replace('\\', '/');
@@ -314,9 +433,17 @@ sealed class ProtoSchema
 
     private static void ValidateFieldNumber(string path, int lineNo, int number)
     {
-        if (number <= 0 || number > 536_870_911 || number is >= 19_000 and <= 19_999)
+        if (number <= 0 || number > MaxFieldNumber || number is >= 19_000 and <= 19_999)
         {
             throw Error(path, lineNo, $"invalid protobuf field number `{number}`");
+        }
+    }
+
+    private static void ValidateReservedFieldNumber(string path, int lineNo, int number)
+    {
+        if (number <= 0 || number > MaxFieldNumber)
+        {
+            throw Error(path, lineNo, $"invalid reserved field number `{number}`");
         }
     }
 
@@ -409,6 +536,8 @@ sealed class ProtoSchema
 sealed record ProtoMessage(string Name, string SourcePath, int LineNo = 0)
 {
     public List<ProtoField> Fields { get; } = [];
+    public List<ProtoReservedRange> ReservedRanges { get; } = [];
+    public List<ProtoReservedName> ReservedNames { get; } = [];
 }
 
 sealed record ProtoEnum(string Name, string SourcePath, int LineNo = 0)
@@ -417,6 +546,10 @@ sealed record ProtoEnum(string Name, string SourcePath, int LineNo = 0)
 }
 
 sealed record ProtoEnumValue(string Name, int Number, int LineNo = 0);
+
+sealed record ProtoReservedRange(int Start, int End, int LineNo = 0);
+
+sealed record ProtoReservedName(string Name, int LineNo = 0);
 
 sealed record ProtoField(string Name, string Type, bool IsRepeated, string OneofGroup, int Number, int LineNo)
 {

@@ -21,6 +21,17 @@ sealed class BridgeModel
 
 static class BridgeSchema
 {
+    private static readonly HashSet<string> GdNativeClassNames = new(StringComparer.Ordinal)
+    {
+        "AABB", "Array", "Basis", "Bool", "Callable", "Color", "Control", "Dictionary",
+        "Float", "Int", "Node", "Node2D", "Node3D", "Object", "PackedByteArray",
+        "PackedColorArray", "PackedFloat32Array", "PackedFloat64Array", "PackedInt32Array",
+        "PackedInt64Array", "PackedStringArray", "PackedVector2Array", "PackedVector3Array",
+        "PackedVector4Array", "Plane", "Projection", "Quaternion", "Rect2", "Rect2i",
+        "RefCounted", "Resource", "RID", "Signal", "String", "StringName", "Transform2D",
+        "Transform3D", "Vector2", "Vector2i", "Vector3", "Vector3i", "Vector4", "Vector4i",
+    };
+
     internal static BridgeModel Read(string schemaDir)
     {
         var schema = ProtoSchema.ParseFiles(SchemaFiles(schemaDir));
@@ -88,6 +99,19 @@ static class BridgeSchema
             signature.Append("message|")
                 .Append(SourceRole(message.SourcePath)).Append('|')
                 .Append(message.Name).Append('\n');
+            foreach (var reservedRange in message.ReservedRanges
+                .OrderBy(item => item.Start)
+                .ThenBy(item => item.End))
+            {
+                signature.Append("reserved-number|")
+                    .Append(reservedRange.Start).Append('|')
+                    .Append(reservedRange.End).Append('\n');
+            }
+            foreach (var reservedName in message.ReservedNames.OrderBy(item => item.Name, StringComparer.Ordinal))
+            {
+                signature.Append("reserved-name|")
+                    .Append(reservedName.Name).Append('\n');
+            }
             foreach (var field in message.Fields
                 .OrderBy(item => item.Number)
                 .ThenBy(item => item.Name, StringComparer.Ordinal))
@@ -331,7 +355,7 @@ static class BridgeSchema
         var schema = model.Schema;
         TextUtil.ValidateGeneratedNames(
             "bridge GDScript view type",
-            model.ViewMessages.Select(item => (item.Name, ClassNameForView(item.Name)))
+            model.ViewMessages.Select(item => (item.Name, GdClassNameForView(item.Name)))
         );
         foreach (var message in model.ViewMessages)
         {
@@ -345,7 +369,7 @@ static class BridgeSchema
         var eventTypes = new List<(string Source, string Identifier)> { ("generated Bus", "Bus") };
         foreach (var variant in model.EventRoot.Fields.Where(item => item.IsOneof))
         {
-            eventTypes.Add(($"variant {variant.Name}", ClassNameForEvent(variant.Type)));
+            eventTypes.Add(($"variant {variant.Name}", GdClassNameForEvent(variant.Type)));
             if (schema.Messages.TryGetValue(variant.Type, out var message))
             {
                 ValidateGdWrapperMembers(schema, message, $"bridge event `{message.Name}`");
@@ -403,6 +427,18 @@ static class BridgeSchema
         return messageType.EndsWith("View", StringComparison.Ordinal)
             ? messageType[..^"View".Length]
             : messageType;
+    }
+
+    internal static string GdClassNameForEvent(string messageType)
+    {
+        string shortName = ClassNameForEvent(messageType);
+        return GdNativeClassNames.Contains(shortName) ? messageType : shortName;
+    }
+
+    internal static string GdClassNameForView(string messageType)
+    {
+        string shortName = ClassNameForView(messageType);
+        return GdNativeClassNames.Contains(shortName) ? messageType : shortName;
     }
 
     internal static ProtoMessage[] MessagesInFile(ProtoSchema schema, string fileName)

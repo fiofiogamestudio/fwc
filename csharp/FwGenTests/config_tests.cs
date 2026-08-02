@@ -385,6 +385,14 @@ static class ConfigTests
                 "FWE config reference"
             );
             Equal("array", game.GetProperty("fields")[1].GetProperty("editorType").GetString(), "FWE array type");
+            string codec = File.ReadAllText(config.ConfigCodecCsPath(root));
+            True(
+                codec.Contains(
+                    "ReadPackScalarArray<string>(obj, ConfigField.Tags, value => ReadPackStringItem(value, \"\"))",
+                    StringComparison.Ordinal
+                ),
+                "repeated scalar pack parser supplies type and fallback"
+            );
         });
     }
 

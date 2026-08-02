@@ -9,6 +9,7 @@ static class BridgeTests
         new("bridge rejects generated name collisions", TestGeneratedBridgeNameCollision),
         new("bridge rejects generated type collisions", TestGeneratedBridgeTypeCollision),
         new("bridge rejects enclosing member collisions", TestBridgeEnclosingMemberCollision),
+        new("bridge avoids native GDScript class names", TestGdNativeClassName),
         new("bridge derives protocol version from schema semantics", TestProtocolVersion),
     ];
 
@@ -113,6 +114,38 @@ static class BridgeTests
                 () => BridgeSchema.Read(Path.Combine(root, "schema", "bridge")),
                 "unsupported scalar `bytes`"
             );
+        });
+    }
+
+    private static void TestGdNativeClassName()
+    {
+        WithTempDir(root =>
+        {
+            WriteProjectConfig(root);
+            Write(root, "schema/bridge/value.proto", "syntax = \"proto3\";\npackage audit.bridge;\n");
+            Write(root, "schema/bridge/intent.proto", "syntax = \"proto3\";\npackage audit.bridge;\n");
+            Write(root, "schema/bridge/view.proto", """
+                syntax = "proto3";
+                package audit.bridge;
+                message ResourceView {
+                  uint32 amount = 1;
+                }
+                message GameView {
+                  repeated ResourceView resources = 1;
+                }
+                """);
+            Write(root, "schema/bridge/event.proto", "syntax = \"proto3\";\npackage audit.bridge;\n");
+            Write(root, "schema/bridge/packet.proto", "syntax = \"proto3\";\npackage audit.bridge;\n");
+
+            var config = FwConfig.Load(root);
+            var model = BridgeSchema.Read(config.BridgeSchemaDir(root));
+            var batch = new GenerationBatch(root);
+            BridgeGd.Stage(batch, config.GodotGenDir(root), model);
+            batch.Commit();
+            string gd = File.ReadAllText(Path.Combine(config.GodotGenDir(root), "_bridge.gd"));
+            True(gd.Contains("class ResourceView:", StringComparison.Ordinal), "native Resource class is not hidden");
+            True(!gd.Contains("class Resource:\n", StringComparison.Ordinal), "unsafe Resource wrapper is absent");
+            True(gd.Contains("ResourceView.wrap(item)", StringComparison.Ordinal), "nested wrapper uses safe class name");
         });
     }
 

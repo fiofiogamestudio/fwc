@@ -146,12 +146,12 @@ static class BridgeGd
             }
             text.AppendLine();
             text.Append(Indent(RenderGdWrapper(
-                ClassNameForEvent(variant.Type),
+                GdClassNameForEvent(variant.Type),
                 message.Fields,
                 eventMode: true,
                 schema,
                 groupName: "Event",
-                classNameForType: ClassNameForEvent), "\t"));
+                classNameForType: GdClassNameForEvent), "\t"));
             text.AppendLine();
         }
 
@@ -186,8 +186,9 @@ static class BridgeGd
         foreach (var variant in eventRoot.Fields.Where(item => item.IsOneof))
         {
             var eventKey = ClassNameForEvent(variant.Type);
+            var wrapperName = GdClassNameForEvent(variant.Type);
             text.AppendLine($"\t\t\t\t\"{eventKey}\":");
-            text.AppendLine($"\t\t\t\t\tvar ev = {eventKey}.wrap(raw)");
+            text.AppendLine($"\t\t\t\t\tvar ev = {wrapperName}.wrap(raw)");
             text.AppendLine("\t\t\t\t\tfor cb in callbacks:");
             text.AppendLine("\t\t\t\t\t\tif cb.is_valid():");
             text.AppendLine("\t\t\t\t\t\t\tcb.call(ev)");
@@ -207,12 +208,12 @@ static class BridgeGd
         {
             text.AppendLine();
             text.Append(Indent(RenderGdWrapper(
-                ClassNameForView(message.Name),
+                GdClassNameForView(message.Name),
                 message.Fields,
                 eventMode: false,
                 schema,
                 groupName: "View",
-                classNameForType: ClassNameForView), "\t"));
+                classNameForType: GdClassNameForView), "\t"));
             text.AppendLine();
         }
         return text.ToString();

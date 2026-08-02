@@ -21,6 +21,7 @@ static class FwCheck
         "_mode",
         "_context",
         "_system",
+        "_service",
         "_logic",
         "_vm",
         "_vm_builder",
@@ -48,6 +49,11 @@ static class FwCheck
         "_intent",
         "_event",
         "_compat",
+        "_loader",
+        "_repository",
+        "_registry",
+        "_diagnostics",
+        "_catalog",
     ];
 
     private static readonly string[] TextExtensions =
@@ -409,7 +415,7 @@ static class FwCheck
             CheckAllowedSubdirs("scenes", ["app", "env"]);
             CheckNoRootFiles("scenes", "put scenes into scenes/app or scenes/env");
 
-            CheckAllowedSubdirs(Path.Combine("csharp", "core"), ["config", "const", "rules", "state", "system"]);
+            CheckAllowedSubdirs(Path.Combine("csharp", "core"), ["config", "const", "loader", "rules", "state", "system"]);
 
             string docsRoot = Path.Combine(_root, "docs");
             if (Directory.Exists(docsRoot))
@@ -455,20 +461,39 @@ static class FwCheck
 
         private string? ReadRootScriptPath(string file)
         {
+            return ReadRootScriptPath(file, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        }
+
+        private string? ReadRootScriptPath(string file, HashSet<string> visited)
+        {
+            string fullPath = Path.GetFullPath(file);
+            if (!File.Exists(fullPath) || !visited.Add(fullPath))
+            {
+                return null;
+            }
+
             var scriptsById = new Dictionary<string, string>(StringComparer.Ordinal);
+            var scenesById = new Dictionary<string, string>(StringComparer.Ordinal);
             bool inRootNode = false;
             bool sawRootNode = false;
+            string? inheritedScenePath = null;
 
-            foreach (string line in File.ReadLines(file, Encoding.UTF8))
+            foreach (string line in File.ReadLines(fullPath, Encoding.UTF8))
             {
-                if (line.StartsWith("[ext_resource", StringComparison.Ordinal)
-                    && line.Contains("type=\"Script\"", StringComparison.Ordinal))
+                if (line.StartsWith("[ext_resource", StringComparison.Ordinal))
                 {
                     string? path = ExtractQuotedAttribute(line, "path");
                     string? id = ExtractQuotedAttribute(line, "id");
                     if (path != null && id != null)
                     {
-                        scriptsById[id] = path;
+                        if (line.Contains("type=\"Script\"", StringComparison.Ordinal))
+                        {
+                            scriptsById[id] = path;
+                        }
+                        else if (line.Contains("type=\"PackedScene\"", StringComparison.Ordinal))
+                        {
+                            scenesById[id] = path;
+                        }
                     }
                     continue;
                 }
@@ -482,6 +507,11 @@ static class FwCheck
                     }
                     sawRootNode = true;
                     inRootNode = true;
+                    string? inheritedId = ExtractExtResourceId(line);
+                    if (inheritedId != null && scenesById.TryGetValue(inheritedId, out string? scenePath))
+                    {
+                        inheritedScenePath = scenePath;
+                    }
                     continue;
                 }
 
@@ -498,20 +528,24 @@ static class FwCheck
                 return scriptsById.TryGetValue(scriptId, out string? scriptPath) ? scriptPath : null;
             }
 
+            if (inheritedScenePath != null && inheritedScenePath.StartsWith("res://", StringComparison.Ordinal))
+            {
+                string inheritedFile = Path.Combine(
+                    _root,
+                    inheritedScenePath[6..].Replace('/', Path.DirectorySeparatorChar)
+                );
+                return ReadRootScriptPath(inheritedFile, visited);
+            }
             return null;
         }
 
         private static string? ExtractQuotedAttribute(string line, string name)
         {
-            string marker = $"{name}=\"";
-            int start = line.IndexOf(marker, StringComparison.Ordinal);
-            if (start < 0)
-            {
-                return null;
-            }
-            start += marker.Length;
-            int end = line.IndexOf('"', start);
-            return end < 0 ? null : line[start..end];
+            var match = System.Text.RegularExpressions.Regex.Match(
+                line,
+                $@"(?<![A-Za-z0-9_]){System.Text.RegularExpressions.Regex.Escape(name)}=""([^""]*)"""
+            );
+            return match.Success ? match.Groups[1].Value : null;
         }
 
         private static string? ExtractExtResourceId(string line)
@@ -569,6 +603,10 @@ static class FwCheck
                 foreach (string file in Directory.GetFiles(csharpRoot, "*.cs", SearchOption.AllDirectories))
                 {
                     if (IsUnder(file, csharpGen))
+                    {
+                        continue;
+                    }
+                    if (IsGodotCSharpAdapter(file))
                     {
                         continue;
                     }
@@ -733,6 +771,28 @@ static class FwCheck
             {
                 Error($"{Rel(file)} must end with one of: {string.Join(", ", suffixes)}");
             }
+        }
+
+        private static bool IsGodotCSharpAdapter(string file)
+        {
+            string name = Path.GetFileNameWithoutExtension(file);
+            if (string.IsNullOrEmpty(name) || !char.IsUpper(name[0]))
+            {
+                return false;
+            }
+
+            string text;
+            try
+            {
+                text = File.ReadAllText(file, Encoding.UTF8);
+            }
+            catch
+            {
+                return false;
+            }
+
+            return text.Contains("[GlobalClass]", StringComparison.Ordinal)
+                && text.Contains($"partial class {name}", StringComparison.Ordinal);
         }
 
         private void RequireConfigValue(string section, string key)

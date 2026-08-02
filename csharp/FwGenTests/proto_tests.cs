@@ -5,6 +5,8 @@ static class ProtoTests
     internal static TestCase[] Cases =>
     [
         new("valid proto subset", TestValidProto),
+        new("proto message reservations", TestProtoReservations),
+        new("proto reservation conflicts fail", TestProtoReservationConflicts),
         new("missing proto import fails", TestMissingProtoImport),
         new("proto import traversal fails", TestProtoImportTraversal),
         new("ambiguous proto import fails", TestAmbiguousProtoImport),
@@ -71,6 +73,73 @@ static class ProtoTests
                 message Example {}
                 """);
             Throws(() => ProtoSchema.ParseFiles([path]), "not part of the parsed schema set");
+        });
+    }
+
+    private static void TestProtoReservations()
+    {
+        WithTempDir(root =>
+        {
+            var path = Write(root, "reserved.proto", """
+                syntax = "proto3";
+                message Example {
+                  reserved 2, 4 to 6, 100 to max;
+                  reserved "legacy_name", "old_value";
+                  string current = 1;
+                }
+                """);
+            var schema = ProtoSchema.ParseFiles([path]);
+            var message = schema.Messages["Example"];
+            Equal(3, message.ReservedRanges.Count, "reserved range count");
+            Equal(2, message.ReservedNames.Count, "reserved name count");
+            Equal(536_870_911, message.ReservedRanges[2].End, "reserved max number");
+        });
+    }
+
+    private static void TestProtoReservationConflicts()
+    {
+        WithTempDir(root =>
+        {
+            var path = Write(root, "reserved_number.proto", """
+                syntax = "proto3";
+                message Example {
+                  reserved 2 to 4;
+                  string value = 3;
+                }
+                """);
+            Throws(() => ProtoSchema.ParseFiles([path]), "field number `3` is reserved");
+        });
+        WithTempDir(root =>
+        {
+            var path = Write(root, "reserved_name.proto", """
+                syntax = "proto3";
+                message Example {
+                  string legacy = 1;
+                  reserved "legacy";
+                }
+                """);
+            Throws(() => ProtoSchema.ParseFiles([path]), "conflicts with field `legacy`");
+        });
+        WithTempDir(root =>
+        {
+            var path = Write(root, "reserved_overlap.proto", """
+                syntax = "proto3";
+                message Example {
+                  reserved 2 to 4;
+                  reserved 4 to 8;
+                }
+                """);
+            Throws(() => ProtoSchema.ParseFiles([path]), "overlaps");
+        });
+        WithTempDir(root =>
+        {
+            var path = Write(root, "reserved_mixed.proto", """
+                syntax = "proto3";
+                message Example {
+                  reserved 2, "legacy";
+                }
+                """);
+            Throws(() => ProtoSchema.ParseFiles([path]), "unsupported reserved syntax");
         });
     }
 

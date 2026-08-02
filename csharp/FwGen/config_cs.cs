@@ -272,7 +272,7 @@ static class ConfigCs
         {
             return IsMessageType(field.Type, schema) && field.Type != "Fixed32"
                 ? $"ReadPackArray(obj, {fieldName}, Parse{ConfigClassName(field.Type)}Pack)"
-                : $"ReadPackScalarArray(obj, {fieldName}, {ConfigPackScalarParser(field.Type)})";
+                : $"ReadPackScalarArray<{CsConfigType(field.Type, false)}>(obj, {fieldName}, {ConfigPackScalarParser(field.Type)})";
         }
 
         if (IsMessageType(field.Type, schema) && field.Type != "Fixed32")
@@ -301,13 +301,13 @@ static class ConfigCs
     {
         return type switch
         {
-            "string" => "ReadPackStringItem",
-            "bool" => "ReadPackBoolItem",
-            "float" or "double" => "ReadPackFloatItem",
-            "Fixed32" => "ReadPackFixedItem",
-            "uint64" => "ReadPackULongItem",
-            "int64" or "sint64" => "ReadPackLongItem",
-            _ => "ReadPackIntItem",
+            "string" => "value => ReadPackStringItem(value, \"\")",
+            "bool" => "value => ReadPackBoolItem(value, false)",
+            "float" or "double" => "value => ReadPackFloatItem(value, 0.0f)",
+            "Fixed32" => "value => ReadPackFixedItem(value, 0.0f)",
+            "uint64" => "value => ReadPackULongItem(value, 0)",
+            "int64" or "sint64" => "value => ReadPackLongItem(value, 0)",
+            _ => "value => ReadPackIntItem(value, 0)",
         };
     }
 
