@@ -8,7 +8,7 @@
 - `schema/config/*.proto`：配置结构事实源。
 - `data/config/*`：人工维护的配置源数据。
 - `pack/config/*`：生成的运行时配置包，不手改。
-- `scripts/_gen`、`csharp/_gen`：生成代码，不手改。
+- `scripts/_gen`、`csharp/_gen`：生成代码，不手改；宿主配置 `[gen].fwe` 时还可生成 FWE 配置结构契约。
 - `Directory.Build.props`：宿主与 DS 的 target framework 事实源；当前以 Godot 4.6 使用的 `net8.0` 为兼容基线，并允许工具在仅安装较新运行时时按 `Major` 向前运行。
 - `global.json`：固定构建用 .NET SDK 和 `Godot.NET.Sdk`；游戏项目中 Godot 写回的 SDK/target 必须与两项配置一致。
 - `scenes/app`、`scenes/env`：应用入口和 mode 环境场景。
@@ -25,7 +25,7 @@
 
 ## Runtime
 - Godot 运行链是 `AppRoot -> BaseMode -> SystemManager`。
-- `AppRoot` 创建 mode host、`FUI`、`FPool`、`FAsset`，并负责 mode 切换。
+- `AppRoot` 创建 mode host、`FUI`、`FPool`、`FAsset`、`FAudio`，并负责 mode 切换。
 - `BaseMode` 负责场景、Godot system 和 presentation 装配。
 - `SystemManager` 按 phase 缓存后的顺序执行 `init / tick / shutdown`，shutdown 使用反向顺序。
 - C# `SystemRuntime` 使用同样的生命周期和 phase 语义，由 `GameCore` 持有。
@@ -57,6 +57,7 @@
 - `FPool` 使用 `register_prefab / spawn / recycle / flush` 管理 actor 和 fx。
 - `spawn(key, parent, owner, props)` 把生命周期 owner 和 props 显式传给对象；Pool 同时追踪 active/free 对象。
 - `FAsset` 使用 `load / unload` 缓存资源；加载失败会输出明确错误且不缓存空值。
+- `FAudio` 使用 `create_player_3d / play_3d` 装配原生 `AudioStreamPlayer3D`；它只处理表现参数，不保存玩法声音或感知真值。
 - `actor / form / widget / fx` 对外统一使用 `setup / clear`，内部扩展点为 `on_setup / on_clear`。
 - `actor / form / widget` 使用 `apply(vm, dt)`；`fx` 使用 `play(payload)`，完成后发出 `finished`。
 - `view` 使用 `setup(root) / render(root, vm, dt) / clear(root)`，只做渲染适配，不管理对象生命周期。
@@ -81,15 +82,25 @@
 
 ## Config
 - `fwgen config` 从 config schema 生成 Godot config 入口、C# typed config、路径常量和 codec。
+- 宿主在 `fw.toml` 配置可选 `[gen].fwe` 后，`fwgen config` 还会生成 `_config_schema.json`，包含 schema hash、根表来源与格式、CSV 表头、字段编辑类型、嵌套 message 和 config 引用。
 - config 字段支持 bridge 的基础标量、空 `Fixed32` marker 和同 schema message；enum、`bytes`、`fixed*`、`sfixed*` 当前不进入生成阶段。
 - schema 会检查生成的 C# 字段、类型、配置路径和 GDScript parser 名；保留名或名称归一化冲突在写文件前失败。
 - `config_check` 检查 schema 与 `data/config` 的字段一致性。
 - `config_pack` 把源配置打包到 `pack/config`。
+- CSV 空白单元格按字段缺省处理；Godot 编辑器态读取源 CSV 与 `config_check / config_pack` 使用相同语义，标量回落到 proto3 零值，数组回落为空数组，配置引用回落到默认项。
 - config pack 使用 76-byte `WCFG` header，校验版本、schema SHA-256、payload length 和 payload SHA-256；纯 C# `Fw.Rt.Config.ConfigPack` 是格式实现，生成器负责调用它，生成 codec 只负责文件读取与 typed 映射。
 - 空 `message Fixed32 {}` 是 signed Q24.8 marker；pack 时乘 256 并检查 int32 范围，读取时除 256。
 - 生成清单只把 config schema 与数据文件布局视为结构输入，普通数据值变化不会要求重生成代码。
 - 默认模板自带最小 `data/config/game.csv.txt`，生成后可立即通过 check/build。
 - 默认模板是最小但完整的 `Godot intent -> C# GameSystem -> view/event -> Godot VM` 计数器闭环，不默认塞入网络、DS 或具体世界玩法。
+
+## Rooms
+- `Fw.Rt.Rooms` 提供与游戏无关的房间目录合同、内存目录存储、HTTP 客户端和 HMAC 入场票据；框架不默认启动目录进程，也不规定游戏网络协议。
+- `RoomDirectoryStore` 只保存房间发现与准入元数据，不保存玩家档案、玩法状态或游戏网络连接；当前实现是单进程内存存储，不提供持久化或多实例一致性。
+- DS 使用目录注册密钥注册房间，目录返回心跳 token、该房间独享的 admission secret 和基于租约计算的建议心跳间隔；注册密钥不直接签发玩家票据，单台 DS 不能伪造其他房间的票据。
+- DS 按不大于目录建议值的间隔提交人数与状态；超过 stale 时间未心跳的房间自动移除。客户端按 `game id + protocol version` 查询，因此不兼容版本不会互相显示。
+- 客户端加入前向目录申请短期 ticket；游戏 authority 应在分配玩家身份与创建权威状态前验证 game、room、过期时间和签名，并自行限制 ticket 重放。
+- `RoomDirectoryClient` 仅允许 loopback 使用 HTTP；非本机目录必须使用 HTTPS。注册密钥、心跳 token 和 admission secret 都不得进入客户端或源码配置。
 
 ## 生成
 - `SystemGen`、`BridgeGen`、`ConfigGen` 只编排流程；schema 层先解析并校验完整语义模型，Godot/C# renderer 只消费同一模型，不再各自推断 root、enum 或字段集合。
@@ -98,7 +109,7 @@
 - `system / bridge / config / config_pack` 先把本次写入和删除全部放入内存批次，再准备同目录临时文件并提交；进程内任一步失败都会逆序恢复旧文件，新建文件会删除。
 - 生成清单与对应代码在同一批次提交；清单 hash 直接基于待提交字节计算，不会提前认可磁盘旧产物。
 - 内容未变化的文件不会重写；`config_pack` 同批删除不再对应当前 config root 的旧 `.bin`。
-- `csharp/_gen/_fwgen_manifest.json` 记录生成器、输入和完整输出集合的 hash；`fw check` 拒绝缺失、过期、集合异常或被手改的生成产物。
+- `csharp/_gen/_fwgen_manifest.json` 记录生成器、输入和完整输出集合的 hash，包括启用的 FWE 契约；`fw check` 拒绝缺失、过期、集合异常或被手改的生成产物。
 - `fw check` 同时检查路径、目录、角色后缀、禁止引用以及 system/bridge/config schema。
 - `new` 在返回成功前自动完成生成、`config_check` 和 `fw check`。
 

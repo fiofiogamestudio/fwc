@@ -41,17 +41,28 @@
 1. 只改数据值：修改 `data/config/*.csv.txt` 或 `.json`，运行 `config_check`，发布前运行 `config_pack`。
 2. 改字段/schema 或切换 CSV/JSON 文件布局：同步 schema/data，再运行 `config`、`config_check`、`config_pack`。
 3. 使用小数定点时在 schema 声明一次空 `message Fixed32 {}`，字段类型写 `Fixed32`；不要给 marker 添加字段。
+4. 宿主需要 FWE 等结构化编辑器时，在 `[gen]` 增加 `fwe = "tools/fwe/_gen"`；编辑器只消费生成的 `_config_schema.json`，不要再维护表头或字段类型副本。
 
 ## C# Node
 - GDScript 需要创建 C# bridge Node 时调用 `FCSharp.create_node("res://csharp/bridge/<name>_bridge.cs")`。
 - C# 文件名、类名必须大小写完全一致，类型必须继承 `Godot.Node`。
 - 若创建失败，先检查 Godot .NET、Debug 构建和 `project.godot` assembly name，不回退到裸 `script.new()`。
 
+## 房间目录
+- 服务端使用 `RoomDirectoryStore` 提供 register、heartbeat、unregister、list 和 join HTTP 端点；具体 Web host、数据库和部署方式由游戏工程决定。
+- DS 使用 `RoomDirectoryClient.RegisterAsync` 注册并保管返回的 heartbeat token 与 admission secret，随后按不大于 `HeartbeatIntervalMilliseconds` 的间隔调用 `HeartbeatAsync`；不要在客户端重复猜测目录的 stale 配置。
+- 客户端只调用 `ListAsync(gameId, protocolVersion)` 和 `JoinAsync(roomId)`；admission secret 永远不返回客户端。
+- authority 使用 `RoomTicket.TryValidate` 校验短期票据后才创建玩家，并按 ticket nonce 与连接身份实现一次性或绑定式消费。
+- 本机开发可以使用 `http://127.0.0.1`；公网必须在反向代理或 Web host 上配置 HTTPS，否则 `RoomDirectoryClient` 会拒绝连接。
+
 ## 表现对象
 - Pool 创建：`pool.spawn(key, parent, owner, props)`。
 - Pool 回收：`pool.recycle(node)`。
 - UI 打开：`ui.open(layer, id, scene, context, props)`。
 - UI 关闭：`ui.close(id)`。
+- 3D 音频节点：`audio.create_player_3d(parent, name, bus)`。
+- 3D 音频播放：`audio.play_3d(player, stream, volume_db, pitch_scale, max_distance, unit_size)`。
+- mode 通过 `audio()` 获取 `FAudio`；玩法判定所需的噪声、距离或感知状态必须来自 core，不能从正在播放的音频反推。
 - 状态对象由 logic 调用 `apply(vm, dt)`。
 - 一次性 fx 由 logic 调用 `play(payload)`，监听 `finished` 后回收。
 - logic 通过 context 数据入口或 intent 提交操作，不保存 system 本体。
