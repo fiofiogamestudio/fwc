@@ -25,10 +25,11 @@
 
 ## Runtime
 - Godot 运行链是 `AppRoot -> BaseMode -> SystemManager`。
-- `AppRoot` 创建 mode host、`FUI`、`FPool`、`FAsset`、`FAudio`，并负责 mode 切换。
+- `AppRoot` 创建 mode host、app system scope、`FUI`、`FPool`、`FAsset`、`FEventBus`、`FLog`、`FAudio`、`FDisplay` 和 `FDebug`，并负责 mode 切换。
 - `BaseMode` 负责场景、Godot system 和 presentation 装配。
 - `SystemManager` 按 phase 缓存后的顺序执行 `init / tick / shutdown`，shutdown 使用反向顺序。
 - C# `SystemRuntime` 使用同样的生命周期和 phase 语义，由 `GameCore` 持有。
+- `AppRoot` 持有全局 system scope；`BaseMode` 持有以全局 scope 为 parent 的局部 scope。两端 runtime 都按 phase 和显式 dependency 做稳定拓扑排序。
 - 两端 runtime 都显式区分 created、initializing、running、faulted、stopping、stopped；失败初始化会把失败项本身也纳入逆序回滚。
 - `AppRoot` 的 mode 切换先清理旧 mode/UI/pool；新 mode enter 失败时再次清理半成品，离开 SceneTree 时执行最终 shutdown。
 
@@ -52,12 +53,18 @@
 
 ## Present
 - `FUI` 使用 `open / close` 管理 form 与 UI layer。
-- `FUI.open` 先实例化并 setup 新 form，成功后才关闭同 id/同层旧 form；screen stack 只在提交后隐藏前一项。
-- `FForms.setup` 与 `FFormLogic.attach_ui/detach_ui` 具有幂等清理语义；form 被外部释放时，`FUI.close` 仍会移除 id 并恢复上一层 screen。
-- `FPool` 使用 `register_prefab / spawn / recycle / flush` 管理 actor 和 fx。
+- `FUI.open` 拒绝空 id，先实例化并 setup 新 form，成功后才关闭同 id/同层旧 form；screen stack 只在提交后隐藏前一项。
+- `FForms.setup` 与 `FFormLogic.attach_ui/detach_ui` 具有幂等清理语义；form 被外部 `free/queue_free` 时，查询或关闭会剔除失效项并恢复上一层 screen。
+- `FPool` 使用 `register_prefab / warmup / spawn / recycle / flush` 管理 actor 和 fx，并跟踪容量、generation、active/free 与重复回收。
 - `spawn(key, parent, owner, props)` 把生命周期 owner 和 props 显式传给对象；Pool 同时追踪 active/free 对象。
-- `FAsset` 使用 `load / unload` 缓存资源；加载失败会输出明确错误且不缓存空值。
-- `FAudio` 使用 `create_player_3d / play_3d` 装配原生 `AudioStreamPlayer3D`；它只处理表现参数，不保存玩法声音或感知真值。
+- `FAsset` 保留 `load / unload` 固定缓存，并提供引用句柄、异步加载、路径归一化和自定义 provider；同路径并发异步请求只执行一次 provider load，加载失败不缓存空值。
+- `FAsset` 为每个缓存项保存实际加载 provider，保证 provider 从注册表移除后仍能成对 release；默认不允许在活动 handle 或加载请求存在时替换/注销 provider，`force` 只用于明确接受句柄失效的整体 teardown。
+- `FEventBus` 提供去重订阅、优先级、once 和安全快照派发；C# 同一 key 只允许一种 payload 类型，并在调用任何 listener 前完成类型预检。
+- `FStateMachine` 提供 guard、payload 与受限链式 transition；C# 自定义状态比较器同时作用于 state 和 transition，生命周期/事件回调抛错后清空当前状态并允许重新启动，`Clear` 即使 exit 失败也会移除注册。
+- `FLog` 提供 level、category threshold、结构化数据和固定容量历史；C# `LogBuffer / ILogSink` 的配置、写入与读取可并发使用，入队时固定结构化字典的浅快照，并拒绝直接或间接的 buffer 转发环。
+- C# `DeterministicRandomStream` 提供可恢复的 seed/step 和无模偏的 32/64 位整数采样；step 耗尽会明确失败，不允许溢出后重复序列。
+- `FAudio` 同时提供 BGM/SFX 注册、淡入淡出、intro-loop、voice 限制、bus 控制，以及 `create_player_3d / play_3d`；它不保存玩法声音或感知真值。
+- `FDisplay` 管理 pending/applied 尺寸、全屏、vsync 和可选持久化；`FDebug` 只管理调试能力是否启用。
 - `actor / form / widget / fx` 对外统一使用 `setup / clear`，内部扩展点为 `on_setup / on_clear`。
 - `actor / form / widget` 使用 `apply(vm, dt)`；`fx` 使用 `play(payload)`，完成后发出 `finished`。
 - `view` 使用 `setup(root) / render(root, vm, dt) / clear(root)`，只做渲染适配，不管理对象生命周期。
@@ -68,9 +75,9 @@
 - bridge 是 Godot 与 C# core 的唯一运行时边界。
 - proto 是合同 DSL，当前不是严格 protobuf wire runtime。
 - bridge 只接受固定五文件；parser 先收集完整文件集，再验证 import、共享 package 和类型引用。import 禁止父目录穿越、大小写漂移与歧义匹配。
-- 支持的 proto3 子集：`syntax`、`package`、`import`、`message`、`enum`、普通字段、`repeated`、`oneof`。
+- 支持的 proto3 子集：`syntax`、`package`、`import`、`message`、`enum`、普通字段、`repeated`、`oneof`，以及 message 内的 `reserved` 字段号/范围/名称。
 - bridge 字段支持 `string / bool / float / double / int32 / int64 / uint32 / uint64 / sint32 / sint64`、同 schema message 和 enum；其他 protobuf 标量在生成前失败。
-- `optional`、`map`、`service`、`option`、`reserved` 等未声明语法会直接报错。
+- `optional`、`map`、`service`、`option` 等未声明语法会直接报错；`reserved` 会校验字段冲突、重叠范围和非法编号。
 - parser 会拒绝未知类型、重复 message/enum、重复 field 名/编号、重复 enum 名/编号、非法 tag、proto3 enum 首项非零和未闭合 block。
 - schema 会按实际 C#/GDScript 命名规则检查生成的字段、成员、类型和 wrapper；不同声明映射到同一标识符时，在写文件前失败。
 - `fwgen bridge` 生成 Godot 统一入口、C# bridge 类型、基础 codec、intent/event/packet codec。
@@ -115,13 +122,13 @@
 
 ## 测试
 - `FwGenTests` 按 `proto / system / bridge / config / runtime / api` 分组，覆盖合法/非法 proto、import/package/oneof、proto 零值、生成标识符冲突、system phase/回滚/fault 清理、生成锁、批次新增/替换/删除回滚、生成清单、config pack 和 wire frame，包括 import 穿越/歧义、数字溢出、格式头、版本、校验和、长度边界与逐字节变异。
-- `tools/test.ps1`、`tools/test.sh` 会构建 runtime/generator，运行生成器测试，并在全新临时目录验证 `new -> check -> config_pack -> build`。
+- `tools/test.ps1`、`tools/test.sh` 会构建 runtime/generator，运行 `FwGenTests` 与 `FwRuntime.Verify`，并在全新临时目录验证 `new -> check -> config_pack -> build`。
 - 测试会比较规范源与模板镜像，并验证重复生成、重复打包的内容完全一致。
-- 本地存在 Godot .NET 时继续执行 headless editor 扫描、编辑器改写后的二次 check/build、runtime 故障注入和主场景启动；可用 `GODOT_BIN` 显式指定可执行文件。
+- 本地存在 Godot .NET 时继续执行 headless editor 扫描、编辑器改写后的二次 check/build、runtime 故障注入、通用服务探针和主场景启动；可用 `GODOT_BIN` 显式指定可执行文件。
 - `.github/workflows/ci.yml` 使用只读仓库权限，在 Windows 与 Linux 安装固定 Godot .NET，并执行同一完整测试链；同一引用的新任务会取消旧任务，单个 job 最长运行 30 分钟。
 - `fw/csharp/Directory.Build.props` 统一 FwGen、FwRuntime 与测试工程的 target framework，并把 C# 警告视为错误；默认模板对宿主使用同一规则。
 - C# snapshot 冻结 `Fw.Rt.*` 的公开类型、继承关系、构造、字段、属性访问器、事件、方法和运算符；Godot snapshot 自动扫描 `fw/scripts/fw` 下全部 `class_name`，冻结直接基类、方法签名与默认值、signal、属性和常量值。
-- `fw/tests/runtime_test.gd` 还覆盖 binding 所有权、pool 状态互斥、ViewStore 缓存、UI wrapper/form logic、失效 UI stack、GDScript system 与 mode 回滚；普通 Godot `ERROR` 默认会让测试失败，仅显式故障注入可放行。
+- `fw/tests/runtime_test.gd` 覆盖 binding 所有权、pool 状态互斥、ViewStore 缓存、UI wrapper/form logic、失效 UI stack、GDScript system 与 mode 回滚；`fw/tools/verify_runtime.gd` 覆盖 event/FSM/system、asset 并发与 provider 生命周期、pool/log/audio/display/debug。普通 Godot `ERROR` 默认会让测试失败，仅逐条列出的故障注入可放行。
 
 ## 治理
 - `fw/docs` 与 `fw/.codex/skills/fw/SKILL.md` 是框架规范源。

@@ -58,18 +58,26 @@
 ## 表现对象
 - Pool 创建：`pool.spawn(key, parent, owner, props)`。
 - Pool 回收：`pool.recycle(node)`。
+- 引用式资源加载：`handle = asset.acquire(path, expected_type)`，使用完调用幂等的 `handle.release()`。
+- 并发异步资源加载：`await asset.acquire_async(path, expected_type)`；同一规范化路径共享一次在途 load，每个调用方仍获得独立 handle 并分别 release。
+- Provider 注销：`asset.unregister_provider(source)` 默认拒绝活动 handle/在途 load；保留缓存时传 `false`，框架仍保存原 provider 负责后续 release。`force=true` 会使现有句柄失效，只用于整体 teardown。
 - UI 打开：`ui.open(layer, id, scene, context, props)`。
 - UI 关闭：`ui.close(id)`。
+- BGM/SFX 先用 `register_bgm / register_sfx` 注册，再用 `play_bgm / play_sfx` 播放；音量和静音通过 Audio Bus API 调整。
 - 3D 音频节点：`audio.create_player_3d(parent, name, bus)`。
 - 3D 音频播放：`audio.play_3d(player, stream, volume_db, pitch_scale, max_distance, unit_size)`。
 - mode 通过 `audio()` 获取 `FAudio`；玩法判定所需的噪声、距离或感知状态必须来自 core，不能从正在播放的音频反推。
 - 状态对象由 logic 调用 `apply(vm, dt)`。
 - 一次性 fx 由 logic 调用 `play(payload)`，监听 `finished` 后回收。
 - logic 通过 context 数据入口或 intent 提交操作，不保存 system 本体。
+- C# `EventBus<TKey>` 的一个 key 只绑定一种 payload 类型；错误类型 publish 会在任何 listener 执行前失败。
+- C# `StateMachine` 的 enter/exit/transition/Started/Transitioned 回调抛错后会停机并清空 current；`Clear` 仍保证移除注册，修复原因后可重新注册并 `Start`。
+- `LogBuffer` 会复制结构化 data 的字典层，调用方可继续修改原字典；字典内对象仍由调用方负责不可变性或深拷贝，`ForwardTo` 不允许形成 buffer 转发环。
 
 ## 验证
 - 最小验证：`fw/tools/check.ps1`。
 - 提交前验证：`fw/tools/test.ps1`。
+- 通用运行时扩展验证：`fw/tools/verify_runtime.ps1 -ProjectRoot .`；完整测试已经自动执行同一 C#/Godot 探针。
 - 测试会创建并清理临时项目，不写入宿主工程。
 - 本机安装 Godot .NET 时，测试会额外执行 headless 脚本扫描和主场景启动；可用 `GODOT_BIN` 指定版本，或用 `-SkipGodot` 跳过。
 - 冷缓存较慢时可用 `FW_GODOT_EDITOR_TIMEOUT_SECONDS` 和 `FW_GODOT_RUN_TIMEOUT_SECONDS` 调整 headless 超时；默认分别为 90 秒和 30 秒。

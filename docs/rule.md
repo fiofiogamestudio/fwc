@@ -36,6 +36,8 @@
 ### System
 - system 使用 `id / phase / context / init / tick / shutdown`。
 - system 顺序由 phase 决定。
+- system 可以声明对同 scope 或 parent scope system 的显式依赖；依赖必须存在，且不得指向更晚 phase。
+- App scope 生命周期必须长于以它为 parent 的 mode scope；parent 不得反向依赖 child。
 - system 只有完成全部初始化后才能进入 running；初始化失败必须按逆序回滚所有已尝试 system。
 - shutdown 必须可重复调用，并在单个 system 清理失败时继续清理其余 system。
 - 非 running 状态不得 tick，也不得继续注册 system 或修改 phase。
@@ -79,6 +81,7 @@
 - bridge 派生的输入命令、事件和字典字段合同由生成器生成。
 - bridge 的生成合同和基础 codec 放在 `csharp/_gen`。
 - fwgen 只支持文档声明的 proto3 子集；未知语法、重复字段或未闭合结构必须直接失败，不得静默忽略。
+- message 的 `reserved` 声明必须阻止退役字段号和字段名被后续字段复用。
 - bridge 字段只允许文档声明的可移植标量、同 schema message 与 enum；不得接受 codec 无法双端还原的标量。
 - proto enum 未赋值时保持 unspecified 空值，不得擅自选择第一个业务枚举；数值保持 proto3 零值。
 - intent action、event 和 packet 的 variant root 各自只能有一个 oneof group。
@@ -113,6 +116,7 @@
 - `vm_builder` 是纯转换器，只负责把 core/bridge view 转成 Godot VM，可被 system 调用。
 - 表现层可以做动画、渐变和缓存，但不得改变 core 结果。
 - service 使用领域 API，不使用表现对象生命周期名；例如 FUI 使用 `open / close`，FPool 使用 `spawn / recycle / flush`，FAsset 使用 `load / unload`。
+- 事件、状态机、日志、音频、显示和调试服务只提供跨游戏机制，不保存具体玩法状态或内容表。
 - presentation object 包括 `actor / form / widget / fx`，对外统一使用 `setup / clear`，内部扩展点统一使用 `on_setup / on_clear`。
 - UI 打开采用事务语义：新 form 完成 setup 后才能替换旧 form；失败不得破坏现有 UI stack。
 - UI wrapper 与 form logic 的 `setup/attach` 必须先清理旧 owner，`clear/detach` 必须关闭其持有的 form；外部释放 form 后仍要修复 stack。

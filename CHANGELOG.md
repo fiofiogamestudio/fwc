@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- 补齐 RollDice EasyGame 可复用运行时：app/mode system scope、资源/provider、事件、状态机、日志、随机、音频、显示、调试与对象池，并保持玩法权威和表现层边界。
+- 加固 `FAsset` 同路径异步请求合并、provider 注销/释放所有权与失效 Object 检查；加固 `FUI` 空 id、外部释放和 queued-for-deletion 栈恢复。
+- C# EventBus 增加单 key payload 契约和派发前预检；StateMachine 统一自定义比较器并在生命周期回调失败后复位；LogBuffer 增加线程安全、即时容量裁剪、结构化字典快照和转发环拒绝。
+- `DeterministicRandomStream` 增加无模偏 `NextInt64` 与 step 耗尽保护，`RandomPicker` 不再用浮点数采样大权重。
+- Windows/Linux 完整测试链现在固定执行 `FwRuntime.Verify` 和 Godot 通用服务探针，并继续把非白名单 Godot 日志错误视为失败。
+
 ## 0.1.4 - 2026-07-19
 
 - Bridge/Config 先解析为单一语义模型，校验器与两端 renderer 共用 root、enum、字段和生成命名结果。
