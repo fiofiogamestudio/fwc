@@ -1,3 +1,245 @@
+type sealed class Fw.Rt.AI.Behavior.BehaviorAction<TContext> : Fw.Rt.AI.Behavior.BehaviorNode<TContext>
+  ctor(System.Func<TContext,Fw.Rt.AI.Behavior.BehaviorStatus> action)
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.Behavior.BehaviorCondition<TContext> : Fw.Rt.AI.Behavior.BehaviorNode<TContext>
+  ctor(System.Predicate<TContext> condition)
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.Behavior.BehaviorInvert<TContext> : Fw.Rt.AI.Behavior.BehaviorNode<TContext>
+  ctor(Fw.Rt.AI.Behavior.BehaviorNode<TContext> child)
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
+type class Fw.Rt.AI.Behavior.BehaviorNode<TContext>
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.Behavior.BehaviorSelector<TContext> : Fw.Rt.AI.Behavior.BehaviorNode<TContext>
+  ctor(params Fw.Rt.AI.Behavior.BehaviorNode<TContext>[] children)
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.Behavior.BehaviorSequence<TContext> : Fw.Rt.AI.Behavior.BehaviorNode<TContext>
+  ctor(params Fw.Rt.AI.Behavior.BehaviorNode<TContext>[] children)
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.Behavior.BehaviorSession
+  ctor()
+  method System.Void Clear(System.Object owner)
+  method System.Void Reset()
+  method System.Void Set<T>(System.Object owner, T value)
+  method T Get<T>(System.Object owner, T fallback = null)
+type enum Fw.Rt.AI.Behavior.BehaviorStatus : System.Int32
+  const Fw.Rt.AI.Behavior.BehaviorStatus Failure = 1
+  const Fw.Rt.AI.Behavior.BehaviorStatus Running = 2
+  const Fw.Rt.AI.Behavior.BehaviorStatus Success = 0
+  const Fw.Rt.AI.Behavior.BehaviorStatus Suspended = 3
+type sealed class Fw.Rt.AI.Behavior.BehaviorTree<TContext>
+  ctor(Fw.Rt.AI.Behavior.BehaviorNode<TContext> root)
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
+  property Fw.Rt.AI.Behavior.BehaviorNode<TContext> Root {get;}
+type sealed class Fw.Rt.AI.Core.DecisionBudget
+  ctor(System.Int32 limit)
+  method System.Boolean TrySpend(System.Int32 amount = 1)
+  method System.Void Reset()
+  property System.Boolean IsExhausted {get;}
+  property System.Int32 Limit {get;}
+  property System.Int32 Remaining {get;}
+  property System.Int32 Used {get;}
+type sealed class Fw.Rt.AI.Core.DecisionScope
+  ctor(System.Int32 tick, Fw.Rt.AI.Core.DecisionBudget budget, Fw.Rt.Randomness.DeterministicRandomStream random, Fw.Rt.AI.Core.IDecisionTrace trace = null)
+  property Fw.Rt.AI.Core.DecisionBudget Budget {get;}
+  property Fw.Rt.AI.Core.IDecisionTrace Trace {get;}
+  property Fw.Rt.Randomness.DeterministicRandomStream Random {get;}
+  property System.Int32 Tick {get;}
+type sealed class Fw.Rt.AI.Core.DecisionTrace : Fw.Rt.AI.Core.IDecisionTrace
+  ctor(System.Int32 capacity = 256)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Core.DecisionTraceEntry> Recent(System.Int32 count = 2147483647)
+  method System.Void Clear()
+  method System.Void Write(System.Int32 tick, System.String module, System.String event, System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> data = null)
+  property System.Int32 Capacity {get;set;}
+type sealed class Fw.Rt.AI.Core.DecisionTraceEntry : System.IEquatable<Fw.Rt.AI.Core.DecisionTraceEntry>
+  ctor(System.Int32 Tick, System.String Module, System.String Event, System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Data)
+  method Fw.Rt.AI.Core.DecisionTraceEntry <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Core.DecisionTraceEntry other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32 Tick, out System.String Module, out System.String Event, out System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Data)
+  property System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Data {get;init;}
+  property System.Int32 Tick {get;init;}
+  property System.String Event {get;init;}
+  property System.String Module {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Core.DecisionTraceEntry left, Fw.Rt.AI.Core.DecisionTraceEntry right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Core.DecisionTraceEntry left, Fw.Rt.AI.Core.DecisionTraceEntry right)
+type interface Fw.Rt.AI.Core.IDecisionTrace
+  method System.Void Write(System.Int32 tick, System.String module, System.String event, System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> data = null)
+type sealed class Fw.Rt.AI.Nav.FlowField<TNode>
+  ctor(Fw.Rt.AI.Nav.IFlowGraph<TNode> graph, TNode goal, System.Collections.Generic.IEqualityComparer<TNode> comparer = null)
+  method System.Boolean Step(Fw.Rt.AI.Core.DecisionScope scope)
+  method System.Boolean TryNext(TNode from, out TNode next)
+  property System.Boolean IsComplete {get;}
+  property System.Collections.Generic.IReadOnlyDictionary<TNode,System.Double> Costs {get;}
+type interface Fw.Rt.AI.Nav.IFlowGraph<TNode>
+  method System.Collections.Generic.IEnumerable<TNode> Incoming(TNode node)
+  method System.Double Cost(TNode from, TNode to)
+type interface Fw.Rt.AI.Nav.IPathGraph<TNode>
+  method System.Collections.Generic.IEnumerable<TNode> Neighbors(TNode node)
+  method System.Double Cost(TNode from, TNode to)
+  method System.Double Estimate(TNode from, TNode goal)
+type sealed class Fw.Rt.AI.Nav.PathCache<TKey,TNode>
+  ctor(System.Int32 capacity = 128)
+  method System.Boolean Remove(TKey key)
+  method System.Boolean TryGet(TKey key, out System.Collections.Generic.IReadOnlyList<TNode> path)
+  method System.Void Clear()
+  method System.Void Set(TKey key, System.Collections.Generic.IEnumerable<TNode> path)
+  property System.Int32 Capacity {get;}
+  property System.Int32 Count {get;}
+type sealed class Fw.Rt.AI.Nav.PathResult<TNode> : System.IEquatable<Fw.Rt.AI.Nav.PathResult<TNode>>
+  ctor(Fw.Rt.AI.Nav.PathStatus Status, System.Collections.Generic.IReadOnlyList<TNode> Nodes, System.Double Cost)
+  method Fw.Rt.AI.Nav.PathResult<TNode> <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Nav.PathResult<TNode> other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Fw.Rt.AI.Nav.PathStatus Status, out System.Collections.Generic.IReadOnlyList<TNode> Nodes, out System.Double Cost)
+  property Fw.Rt.AI.Nav.PathStatus Status {get;init;}
+  property System.Collections.Generic.IReadOnlyList<TNode> Nodes {get;init;}
+  property System.Double Cost {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Nav.PathResult<TNode> left, Fw.Rt.AI.Nav.PathResult<TNode> right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Nav.PathResult<TNode> left, Fw.Rt.AI.Nav.PathResult<TNode> right)
+type sealed class Fw.Rt.AI.Nav.PathSearch<TNode>
+  ctor(Fw.Rt.AI.Nav.IPathGraph<TNode> graph, TNode start, TNode goal, System.Collections.Generic.IEqualityComparer<TNode> comparer = null)
+  method Fw.Rt.AI.Nav.PathResult<TNode> Step(Fw.Rt.AI.Core.DecisionScope scope)
+  property System.Boolean IsFinished {get;}
+type enum Fw.Rt.AI.Nav.PathStatus : System.Int32
+  const Fw.Rt.AI.Nav.PathStatus Complete = 1
+  const Fw.Rt.AI.Nav.PathStatus Searching = 0
+  const Fw.Rt.AI.Nav.PathStatus Unreachable = 2
+type struct Fw.Rt.AI.Nav.SteerResult : System.IEquatable<Fw.Rt.AI.Nav.SteerResult>
+  ctor(System.Numerics.Vector2 Linear)
+  method System.Boolean Equals(Fw.Rt.AI.Nav.SteerResult other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Numerics.Vector2 Linear)
+  property Fw.Rt.AI.Nav.SteerResult Zero {get;}
+  property System.Numerics.Vector2 Linear {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Nav.SteerResult left, Fw.Rt.AI.Nav.SteerResult right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Nav.SteerResult left, Fw.Rt.AI.Nav.SteerResult right)
+type static class Fw.Rt.AI.Nav.Steering
+  static method Fw.Rt.AI.Nav.SteerResult Arrive(System.Numerics.Vector2 position, System.Numerics.Vector2 target, System.Single maxSpeed, System.Single slowRadius, System.Single stopRadius = 0)
+  static method Fw.Rt.AI.Nav.SteerResult Blend(System.Single maxSpeed, params System.ValueTuple<Fw.Rt.AI.Nav.SteerResult,System.Single>[] inputs)
+  static method Fw.Rt.AI.Nav.SteerResult Seek(System.Numerics.Vector2 position, System.Numerics.Vector2 target, System.Single maxSpeed)
+  static method Fw.Rt.AI.Nav.SteerResult Separate(System.Numerics.Vector2 position, System.Collections.Generic.IEnumerable<System.Numerics.Vector2> neighbors, System.Single radius, System.Single maxSpeed)
+type sealed class Fw.Rt.AI.Plan.GoalPlanner<TFact>
+  ctor()
+  method Fw.Rt.AI.Plan.PlanSearch<TFact> Begin(System.Collections.Generic.IEnumerable<TFact> facts, Fw.Rt.AI.Plan.PlanGoal<TFact> goal)
+  method System.Boolean Remove(System.String id)
+  method System.Void Add(Fw.Rt.AI.Plan.PlanAction<TFact> action)
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Plan.PlanAction<TFact>> Actions {get;}
+type sealed class Fw.Rt.AI.Plan.PlanAction<TFact>
+  ctor(System.String id, System.Collections.Generic.IEnumerable<TFact> requires, System.Collections.Generic.IEnumerable<TFact> adds, System.Collections.Generic.IEnumerable<TFact> removes, System.Double cost = 1)
+  property System.Collections.Generic.IReadOnlySet<TFact> Adds {get;}
+  property System.Collections.Generic.IReadOnlySet<TFact> Removes {get;}
+  property System.Collections.Generic.IReadOnlySet<TFact> Requires {get;}
+  property System.Double Cost {get;}
+  property System.String Id {get;}
+type sealed class Fw.Rt.AI.Plan.PlanGoal<TFact>
+  ctor(System.String id, System.Collections.Generic.IEnumerable<TFact> requires)
+  property System.Collections.Generic.IReadOnlySet<TFact> Requires {get;}
+  property System.String Id {get;}
+type sealed class Fw.Rt.AI.Plan.PlanResult<TFact> : System.IEquatable<Fw.Rt.AI.Plan.PlanResult<TFact>>
+  ctor(Fw.Rt.AI.Plan.PlanStatus Status, System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Plan.PlanAction<TFact>> Actions, System.Double Cost)
+  method Fw.Rt.AI.Plan.PlanResult<TFact> <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Plan.PlanResult<TFact> other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Fw.Rt.AI.Plan.PlanStatus Status, out System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Plan.PlanAction<TFact>> Actions, out System.Double Cost)
+  property Fw.Rt.AI.Plan.PlanStatus Status {get;init;}
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Plan.PlanAction<TFact>> Actions {get;init;}
+  property System.Double Cost {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Plan.PlanResult<TFact> left, Fw.Rt.AI.Plan.PlanResult<TFact> right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Plan.PlanResult<TFact> left, Fw.Rt.AI.Plan.PlanResult<TFact> right)
+type sealed class Fw.Rt.AI.Plan.PlanSearch<TFact>
+  method Fw.Rt.AI.Plan.PlanResult<TFact> Step(Fw.Rt.AI.Core.DecisionScope scope)
+  property System.Boolean IsFinished {get;}
+type enum Fw.Rt.AI.Plan.PlanStatus : System.Int32
+  const Fw.Rt.AI.Plan.PlanStatus Complete = 1
+  const Fw.Rt.AI.Plan.PlanStatus Searching = 0
+  const Fw.Rt.AI.Plan.PlanStatus Unreachable = 2
+type sealed class Fw.Rt.AI.Policy.FallbackPolicy<TInput,TOutput> : Fw.Rt.AI.Policy.IModelPolicy<TInput,TOutput>
+  ctor(Fw.Rt.AI.Policy.IModelPolicy<TInput,TOutput> primary, Fw.Rt.AI.Policy.IModelPolicy<TInput,TOutput> fallback, System.Predicate<TOutput> validate = null)
+  method System.Threading.Tasks.ValueTask<Fw.Rt.AI.Policy.PolicyResult<TOutput>> EvaluateAsync(TInput input, System.Threading.CancellationToken cancellationToken = null)
+type interface Fw.Rt.AI.Policy.IModelPolicy<TInput,TOutput>
+  method System.Threading.Tasks.ValueTask<Fw.Rt.AI.Policy.PolicyResult<TOutput>> EvaluateAsync(TInput input, System.Threading.CancellationToken cancellationToken = null)
+type sealed class Fw.Rt.AI.Policy.LocalPolicy<TInput,TOutput> : Fw.Rt.AI.Policy.IModelPolicy<TInput,TOutput>
+  ctor(System.Func<TInput,TOutput> evaluate)
+  method System.Threading.Tasks.ValueTask<Fw.Rt.AI.Policy.PolicyResult<TOutput>> EvaluateAsync(TInput input, System.Threading.CancellationToken cancellationToken = null)
+type sealed class Fw.Rt.AI.Policy.PolicyResult<TOutput> : System.IEquatable<Fw.Rt.AI.Policy.PolicyResult<TOutput>>
+  ctor(Fw.Rt.AI.Policy.PolicyStatus Status, TOutput Output, System.String Error = "")
+  method Fw.Rt.AI.Policy.PolicyResult<TOutput> <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Policy.PolicyResult<TOutput> other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Fw.Rt.AI.Policy.PolicyStatus Status, out TOutput Output, out System.String Error)
+  property Fw.Rt.AI.Policy.PolicyStatus Status {get;init;}
+  property System.String Error {get;init;}
+  property TOutput Output {get;init;}
+  static method Fw.Rt.AI.Policy.PolicyResult<TOutput> Failed(System.String error)
+  static method Fw.Rt.AI.Policy.PolicyResult<TOutput> Rejected(System.String error)
+  static method Fw.Rt.AI.Policy.PolicyResult<TOutput> Success(TOutput output)
+  static method System.Boolean op_Equality(Fw.Rt.AI.Policy.PolicyResult<TOutput> left, Fw.Rt.AI.Policy.PolicyResult<TOutput> right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Policy.PolicyResult<TOutput> left, Fw.Rt.AI.Policy.PolicyResult<TOutput> right)
+type enum Fw.Rt.AI.Policy.PolicyStatus : System.Int32
+  const Fw.Rt.AI.Policy.PolicyStatus Failed = 2
+  const Fw.Rt.AI.Policy.PolicyStatus Rejected = 1
+  const Fw.Rt.AI.Policy.PolicyStatus Success = 0
+type sealed class Fw.Rt.AI.Policy.RemotePolicy<TInput,TOutput> : Fw.Rt.AI.Policy.IModelPolicy<TInput,TOutput>
+  ctor(System.Func<TInput,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<Fw.Rt.AI.Policy.PolicyResult<TOutput>>> evaluate)
+  method System.Threading.Tasks.ValueTask<Fw.Rt.AI.Policy.PolicyResult<TOutput>> EvaluateAsync(TInput input, System.Threading.CancellationToken cancellationToken = null)
+type sealed class Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> : System.IEquatable<Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice>>
+  ctor(System.String Id, TChoice Choice, System.Func<TContext,System.Double> Score, System.Double Weight = 1, System.Double Noise = 0)
+  method Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String Id, out TChoice Choice, out System.Func<TContext,System.Double> Score, out System.Double Weight, out System.Double Noise)
+  property System.Double Noise {get;init;}
+  property System.Double Weight {get;init;}
+  property System.Func<TContext,System.Double> Score {get;init;}
+  property System.String Id {get;init;}
+  property TChoice Choice {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> left, Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> left, Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> right)
+type sealed class Fw.Rt.AI.Utility.UtilityResult<TChoice> : System.IEquatable<Fw.Rt.AI.Utility.UtilityResult<TChoice>>
+  ctor(System.Boolean HasChoice, System.String Id, TChoice Choice, System.Double Score, System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Utility.UtilityScore> Scores)
+  method Fw.Rt.AI.Utility.UtilityResult<TChoice> <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Utility.UtilityResult<TChoice> other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Boolean HasChoice, out System.String Id, out TChoice Choice, out System.Double Score, out System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Utility.UtilityScore> Scores)
+  property System.Boolean HasChoice {get;init;}
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Utility.UtilityScore> Scores {get;init;}
+  property System.Double Score {get;init;}
+  property System.String Id {get;init;}
+  property TChoice Choice {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Utility.UtilityResult<TChoice> left, Fw.Rt.AI.Utility.UtilityResult<TChoice> right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Utility.UtilityResult<TChoice> left, Fw.Rt.AI.Utility.UtilityResult<TChoice> right)
+type sealed class Fw.Rt.AI.Utility.UtilityScore : System.IEquatable<Fw.Rt.AI.Utility.UtilityScore>
+  ctor(System.String Id, System.Double Score)
+  method Fw.Rt.AI.Utility.UtilityScore <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Utility.UtilityScore other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String Id, out System.Double Score)
+  property System.Double Score {get;init;}
+  property System.String Id {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Utility.UtilityScore left, Fw.Rt.AI.Utility.UtilityScore right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Utility.UtilityScore left, Fw.Rt.AI.Utility.UtilityScore right)
+type sealed class Fw.Rt.AI.Utility.UtilitySelector<TContext,TChoice>
+  ctor()
+  method Fw.Rt.AI.Utility.UtilityResult<TChoice> Select(TContext context, Fw.Rt.AI.Core.DecisionScope scope, System.String currentId = "", System.Double switchThreshold = 0)
+  method System.Boolean Remove(System.String id)
+  method System.Void Add(Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> option)
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice>> Options {get;}
 type static class Fw.Rt.Bridge.WireFrame
   static method System.Boolean HasHeader(System.ReadOnlySpan<System.Byte> value)
   static method System.Byte[] Decode(System.ReadOnlySpan<System.Byte> frame, Fw.Rt.Bridge.WireFrameOptions options = null)

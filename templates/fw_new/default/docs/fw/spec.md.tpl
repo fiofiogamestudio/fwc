@@ -51,6 +51,16 @@
 - `core/const` 只保存少量编译期常量。
 - bridge 不保存玩法真值，不把 Godot scene 或 UI 类型传入 core。
 
+## AI
+- `Fw.Rt.AI` 是纯 C# 通用算法库，不是第二套 system runtime；宿主 system 负责生命周期、读取 context 和把结果转换成自己的 intent。
+- `Core` 提供固定工作量 `DecisionBudget`、确定性 `DecisionScope` 和有界 `DecisionTrace`；真实耗时只能监控，不得决定权威算法的停止位置。
+- `Utility` 按稳定注册顺序评分，支持权重、确定性噪声与切换阈值；分数相同保持先注册项。
+- `Behavior` 使用 `Success / Failure / Running / Suspended`，只读树定义与 `BehaviorSession` 分离，同一棵树可供多个会话使用。
+- `Plan` 提供基于 typed fact/action/goal 的增量 GOAP；`PlanSearch` 在预算耗尽后保留搜索状态，下一 tick 继续。
+- `Nav` 提供增量 A*、LRU `PathCache`、反向邻接流场和基于 `System.Numerics.Vector2` 的 Steering，不依赖 Godot 类型。
+- `Policy` 只定义本地、远程和回退策略合同；HTTP、API key、prompt、模型供应商、输入过滤与游戏语义留在宿主工程。
+- AI 模块不读取宿主 context、不直接修改世界、不生成具体游戏命令，也不要求游戏同时使用全部算法。
+
 ## Present
 - `FUI` 使用 `open / close` 管理 form 与 UI layer。
 - `FUI.open` 拒绝空 id，先实例化并 setup 新 form，成功后才关闭同 id/同层旧 form；screen stack 只在提交后隐藏前一项。

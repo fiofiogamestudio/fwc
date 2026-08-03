@@ -1,3 +1,9 @@
+using Fw.Rt.AI.Behavior;
+using Fw.Rt.AI.Core;
+using Fw.Rt.AI.Nav;
+using Fw.Rt.AI.Plan;
+using Fw.Rt.AI.Policy;
+using Fw.Rt.AI.Utility;
 using Fw.Rt.Events;
 using Fw.Rt.Logging;
 using Fw.Rt.Randomness;
@@ -9,8 +15,14 @@ VerifyEventBus();
 VerifyStateMachine();
 VerifyDeterministicRandom();
 VerifyLogBuffer();
+VerifyDecisionCore();
+VerifyUtility();
+VerifyBehavior();
+VerifyPlan();
+VerifyNavigation();
+VerifyPolicy();
 
-Console.WriteLine("Verified FwRuntime systems, events, state, random, and logging.");
+Console.WriteLine("Verified FwRuntime systems, events, state, random, logging, and AI modules.");
 return;
 
 static void VerifySystemRuntime()
@@ -335,6 +347,121 @@ static void VerifyLogBuffer()
     Equal(128, log.Recent().Count, "concurrent log capacity");
 }
 
+static void VerifyDecisionCore()
+{
+    var budget = new DecisionBudget(2);
+    True(budget.TrySpend(), "decision budget first unit");
+    True(budget.TrySpend(), "decision budget second unit");
+    True(!budget.TrySpend(), "decision budget exhaustion");
+    budget.Reset();
+    Equal(2, budget.Remaining, "decision budget reset");
+
+    var trace = new DecisionTrace(1);
+    var data = new Dictionary<string, object?> { ["value"] = 1 };
+    trace.Write(1, "test", "first", data);
+    data["value"] = 2;
+    trace.Write(2, "test", "second");
+    var entries = trace.Recent();
+    Equal(1, entries.Count, "decision trace capacity");
+    Equal("second", entries[0].Event, "decision trace order");
+}
+
+static void VerifyUtility()
+{
+    var selector = new UtilitySelector<int, string>();
+    selector.Add(new UtilityOption<int, string>("low", "wait", value => value));
+    selector.Add(new UtilityOption<int, string>("high", "attack", value => value + 2));
+    var scope = Scope(10);
+    var result = selector.Select(3, scope);
+    True(result.HasChoice, "utility has choice");
+    Equal("high", result.Id, "utility selection");
+
+    scope = Scope(10);
+    result = selector.Select(3, scope, "low", 3.0);
+    Equal("low", result.Id, "utility switching threshold");
+}
+
+static void VerifyBehavior()
+{
+    var runs = 0;
+    var tree = new BehaviorTree<int>(
+        new BehaviorSequence<int>(
+            new BehaviorCondition<int>(value => value > 0),
+            new BehaviorAction<int>(_ => ++runs == 1 ? BehaviorStatus.Running : BehaviorStatus.Success)
+        )
+    );
+    var session = new BehaviorSession();
+    Equal(BehaviorStatus.Running, tree.Tick(1, session, Scope(10)), "behavior running");
+    Equal(BehaviorStatus.Success, tree.Tick(1, session, Scope(10)), "behavior resumes");
+    Equal(2, runs, "behavior session cursor");
+
+    var suspended = new BehaviorTree<int>(new BehaviorAction<int>(_ => BehaviorStatus.Success));
+    Equal(BehaviorStatus.Suspended, suspended.Tick(1, new BehaviorSession(), Scope(0)), "behavior budget");
+}
+
+static void VerifyPlan()
+{
+    var planner = new GoalPlanner<string>();
+    planner.Add(new PlanAction<string>("find_key", [], ["key"], []));
+    planner.Add(new PlanAction<string>("open_door", ["key"], ["open"], []));
+    var search = planner.Begin([], new PlanGoal<string>("escape", ["open"]));
+    PlanResult<string> result;
+    do
+    {
+        result = search.Step(Scope(1));
+    }
+    while (result.Status == PlanStatus.Searching);
+    Equal(PlanStatus.Complete, result.Status, "plan completes");
+    Equal("find_key,open_door", string.Join(',', result.Actions.Select(item => item.Id)), "plan order");
+}
+
+static void VerifyNavigation()
+{
+    var graph = new LineGraph(4);
+    var search = new PathSearch<int>(graph, 0, 3);
+    PathResult<int> result;
+    do
+    {
+        result = search.Step(Scope(1));
+    }
+    while (result.Status == PathStatus.Searching);
+    Equal(PathStatus.Complete, result.Status, "path completes");
+    Equal("0,1,2,3", string.Join(',', result.Nodes), "path nodes");
+
+    var cache = new PathCache<string, int>(1);
+    cache.Set("path", result.Nodes);
+    True(cache.TryGet("path", out var cached), "path cache hit");
+    Equal(4, cached.Count, "path cache content");
+
+    var flow = new FlowField<int>(graph, 3);
+    while (!flow.Step(Scope(1))) { }
+    True(flow.TryNext(0, out var next), "flow next");
+    Equal(1, next, "flow direction");
+
+    var steer = Steering.Arrive(
+        new System.Numerics.Vector2(0, 0),
+        new System.Numerics.Vector2(1, 0),
+        2.0f,
+        2.0f
+    );
+    True(steer.Linear.X > 0.0f && steer.Linear.X <= 2.0f, "steering arrive");
+}
+
+static void VerifyPolicy()
+{
+    var primary = new LocalPolicy<int, int>(_ => throw new InvalidOperationException("offline"));
+    var fallback = new LocalPolicy<int, int>(value => value + 1);
+    var policy = new FallbackPolicy<int, int>(primary, fallback, value => value > 0);
+    var result = policy.EvaluateAsync(4).AsTask().GetAwaiter().GetResult();
+    Equal(PolicyStatus.Success, result.Status, "policy fallback status");
+    Equal(5, result.Output, "policy fallback output");
+}
+
+static DecisionScope Scope(int units)
+{
+    return new DecisionScope(1, new DecisionBudget(units), new DeterministicRandomStream(7));
+}
+
 static void True(bool value, string label)
 {
     if (!value)
@@ -397,4 +524,17 @@ sealed class TestSystem(bool failInit = false) : ISystem<TestContext>
         _context?.Trace.Add($"shutdown:{_context.Name}");
         _context = null;
     }
+}
+
+sealed class LineGraph(int count) : IPathGraph<int>, IFlowGraph<int>
+{
+    public IEnumerable<int> Neighbors(int node)
+    {
+        if (node > 0) yield return node - 1;
+        if (node + 1 < count) yield return node + 1;
+    }
+
+    public double Cost(int from, int to) => 1.0;
+    public double Estimate(int from, int goal) => Math.Abs(goal - from);
+    public IEnumerable<int> Incoming(int node) => Neighbors(node);
 }

@@ -48,6 +48,15 @@
 - C# 文件名、类名必须大小写完全一致，类型必须继承 `Godot.Node`。
 - 若创建失败，先检查 Godot .NET、Debug 构建和 `project.godot` assembly name，不回退到裸 `script.new()`。
 
+## AI 算法
+- 宿主在自己的 core system 中创建并调用 AI 对象；不要给 Utility、Behavior、Plan 或 Nav 再套 `init/tick/shutdown` 生命周期。
+- 每次权威计算创建 `DecisionScope(tick, budget, random, trace)`；budget 使用候选数或节点数，不使用毫秒数。
+- Utility 用 `UtilitySelector` 选择目标，FSM 用现有 `StateMachine` 稳定执行动作，Behavior Tree 用 `BehaviorSession` 保存 Running 节点。
+- GOAP 使用 `GoalPlanner.Begin` 创建独立 `PlanSearch`，A* 直接创建 `PathSearch`；返回 `Searching` 时保留对象并在后续 tick 继续调用 `Step`。
+- 流场图必须通过 `IFlowGraph.Incoming` 提供反向邻接；普通 A* 图通过 `IPathGraph.Neighbors` 提供正向邻接。
+- 远程模型通过 `RemotePolicy` 注入宿主自己的异步调用，并用 `FallbackPolicy` 接本地策略；密钥和网络客户端不得进入 `fw`。
+- 算法结果必须先由宿主验证，再转换为自己的 intent 或 command；框架算法不得直接修改玩法状态。
+
 ## 房间目录
 - 服务端使用 `RoomDirectoryStore` 提供 register、heartbeat、unregister、list 和 join HTTP 端点；具体 Web host、数据库和部署方式由游戏工程决定。
 - DS 使用 `RoomDirectoryClient.RegisterAsync` 注册并保管返回的 heartbeat token 与 admission secret，随后按不大于 `HeartbeatIntervalMilliseconds` 的间隔调用 `HeartbeatAsync`；不要在客户端重复猜测目录的 stale 配置。

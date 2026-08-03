@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- 新增可独立组合的纯 C# AI 模块：固定工作量预算与追踪、Utility、Behavior Tree、增量 GOAP、增量 A*、LRU 路径缓存、流场、Steering，以及本地/远程/回退 Policy 合同。
 - 补齐 RollDice EasyGame 可复用运行时：app/mode system scope、资源/provider、事件、状态机、日志、随机、音频、显示、调试与对象池，并保持玩法权威和表现层边界。
 - 加固 `FAsset` 同路径异步请求合并、provider 注销/释放所有权与失效 Object 检查；加固 `FUI` 空 id、外部释放和 queued-for-deletion 栈恢复。
 - C# EventBus 增加单 key payload 契约和派发前预检；StateMachine 统一自定义比较器并在生命周期回调失败后复位；LogBuffer 增加线程安全、即时容量裁剪、结构化字典快照和转发环拒绝。
