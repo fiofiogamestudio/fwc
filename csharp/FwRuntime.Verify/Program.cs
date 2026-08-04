@@ -1,8 +1,13 @@
 using Fw.Rt.AI.Behavior;
 using Fw.Rt.AI.Core;
+using Fw.Rt.AI.Environment;
+using Fw.Rt.AI.Evaluation;
+using Fw.Rt.AI.Model;
 using Fw.Rt.AI.Nav;
 using Fw.Rt.AI.Plan;
 using Fw.Rt.AI.Policy;
+using Fw.Rt.AI.Search;
+using Fw.Rt.AI.Training;
 using Fw.Rt.AI.Utility;
 using Fw.Rt.Events;
 using Fw.Rt.Logging;
@@ -21,6 +26,10 @@ VerifyBehavior();
 VerifyPlan();
 VerifyNavigation();
 VerifyPolicy();
+VerifyGameEnvironment();
+VerifyBeamSearch();
+VerifyPuctSearch();
+VerifyTrainingAndEvaluation();
 
 Console.WriteLine("Verified FwRuntime systems, events, state, random, logging, and AI modules.");
 return;
@@ -457,6 +466,228 @@ static void VerifyPolicy()
     Equal(5, result.Output, "policy fallback output");
 }
 
+static void VerifyGameEnvironment()
+{
+    var spec = new GameEnvironmentSpec("toy", 1);
+    Equal("toy", spec.Id, "game environment id");
+    Equal(GamePayoffMode.SinglePlayer, spec.PayoffMode, "game payoff mode");
+    True(!GameEpisodeResult.Running(1).IsFinished, "running episode state");
+    Throws<ArgumentException>(
+        () => new GameEnvironmentSpec("bad", 2),
+        "single-player count validation"
+    );
+    Throws<ArgumentOutOfRangeException>(
+        () => new ChanceOutcome<string>("bad", 0.0),
+        "chance probability validation"
+    );
+}
+
+static void VerifyBeamSearch()
+{
+    var environment = new ToyGameEnvironment();
+    var root = environment.Reset(1);
+    var search = new BeamSearch<ToyGameState, int, string>(
+        environment,
+        root,
+        (state, _) => state.Position / 3.0,
+        new BeamSearchOptions(width: 2, maxDepth: 4)
+    );
+
+    BeamSearchResult<string> result;
+    do
+    {
+        result = search.Step(Scope(1));
+    }
+    while (!result.IsFinished);
+
+    Equal(BeamSearchStatus.Success, result.Status, "beam search succeeds");
+    Equal("advance,advance,advance", string.Join(',', result.Actions), "beam search path");
+    Equal(0, root.Position, "beam search preserves root state");
+    True(result.ExpandedNodes >= 3, "beam search incremental expansion");
+    Throws<NotSupportedException>(
+        () => new BeamSearch<ToyGameState, int, string>(
+            new ToyGameEnvironment(new GameEnvironmentSpec(
+                "toy_adversarial",
+                1,
+                payoffMode: GamePayoffMode.ZeroSum
+            )),
+            new ToyGameState(),
+            (state, _) => state.Position
+        ),
+        "beam search rejects adversarial payoff mode"
+    );
+    var duplicateSearch = new BeamSearch<ToyGameState, int, string>(
+        new ToyGameEnvironment(duplicateActions: true),
+        new ToyGameState(),
+        (state, _) => state.Position
+    );
+    Throws<InvalidOperationException>(
+        () => duplicateSearch.Step(Scope(1)),
+        "beam search rejects duplicate legal actions"
+    );
+}
+
+static void VerifyPuctSearch()
+{
+    var environment = new ToyGameEnvironment();
+    var root = environment.Reset(1);
+    var model = new DelegatePolicyValueModel<int, string>((observation, _, actions) =>
+        new PolicyValuePrediction<string>(
+            actions.Select(action => new ActionPrior<string>(action, 1.0)),
+            [observation / 3.0]
+        )
+    );
+    var search = new PuctSearch<ToyGameState, int, string>(
+        environment,
+        root,
+        model,
+        new PuctSearchOptions(simulationLimit: 96, maxDepth: 8)
+    );
+    var paused = search.Step(Scope(1));
+    Equal(PuctSearchStatus.Searching, paused.Status, "puct search pauses on budget");
+    Equal(1, paused.Simulations, "puct search spends one simulation");
+    var result = search.Step(Scope(95));
+    Equal(PuctSearchStatus.Complete, result.Status, "puct search completes");
+    True(result.HasAction, "puct search has action");
+    Equal(ToyGameEnvironment.Advance, result.Action, "puct search selects winning action");
+    Equal(0, root.Position, "puct search preserves root state");
+    True(
+        result.Actions.Single(item => item.Action == ToyGameEnvironment.Advance).Visits
+            > result.Actions.Single(item => item.Action == ToyGameEnvironment.Lose).Visits,
+        "puct winning action receives more visits"
+    );
+
+    var stochastic = new ChanceGameEnvironment();
+    var chanceModel = new UniformPolicyValueModel<int, string>(1);
+    var first = new PuctSearch<ChanceGameState, int, string>(
+        stochastic,
+        stochastic.Reset(4),
+        chanceModel,
+        new PuctSearchOptions(simulationLimit: 64, maxDepth: 6)
+    ).Step(Scope(64));
+    var second = new PuctSearch<ChanceGameState, int, string>(
+        stochastic,
+        stochastic.Reset(4),
+        chanceModel,
+        new PuctSearchOptions(simulationLimit: 64, maxDepth: 6)
+    ).Step(Scope(64));
+    Near(first.RootMeanValues[0], second.RootMeanValues[0], 1e-12, "chance search replay");
+    Throws<NotSupportedException>(
+        () => new PuctSearch<ToyGameState, int, string>(
+            new ToyGameEnvironment(new GameEnvironmentSpec(
+                "toy_hidden",
+                1,
+                information: GameInformation.Imperfect
+            )),
+            new ToyGameState(),
+            model
+        ),
+        "puct rejects hidden-information state"
+    );
+}
+
+static void VerifyTrainingAndEvaluation()
+{
+    var sample = new PolicyValueSample<int, string>(
+        2,
+        0,
+        ["left", "right"],
+        "right",
+        [new PolicyTarget<string>("left", 0.25), new PolicyTarget<string>("right", 0.75)],
+        [0.0],
+        [1.0]
+    );
+    var terminal = new GameEpisodeResult(GameResultStatus.Terminated, [1.0], "win");
+    var trajectory = new TrainingTrajectory<int, string>("toy", "episode-1", 7, [sample], terminal);
+    Equal(1, trajectory.Samples.Count, "training trajectory sample");
+
+    var buffer = new ReplayBuffer<int>(2);
+    buffer.AddRange([1, 2, 3]);
+    Equal("2,3", string.Join(',', buffer.Snapshot()), "replay buffer eviction");
+    buffer.Add(4);
+    Equal("3,4", string.Join(',', buffer.Snapshot()), "replay buffer ring wrap");
+    var first = buffer.Sample(2, new DeterministicRandomStream(9));
+    var second = buffer.Sample(2, new DeterministicRandomStream(9));
+    Equal(string.Join(',', first), string.Join(',', second), "replay buffer deterministic sample");
+
+    var evaluation = new EvaluationAccumulator();
+    evaluation.Add(terminal, 3);
+    evaluation.Add(new GameEpisodeResult(GameResultStatus.Terminated, [-1.0], "loss"), 5);
+    evaluation.Add(new GameEpisodeResult(GameResultStatus.Truncated, [0.0], reason: "limit"), 7);
+    var summary = evaluation.Snapshot();
+    Equal(3, summary.Episodes, "evaluation episodes");
+    Equal(1, summary.Successes, "evaluation successes");
+    Equal(1, summary.Failures, "evaluation failures");
+    Equal(1, summary.Truncated, "evaluation truncation");
+    Near(0.5, summary.SuccessRate, 1e-12, "evaluation success rate");
+    True(summary.SuccessRateLower < summary.SuccessRate, "evaluation confidence lower bound");
+    True(summary.SuccessRateUpper > summary.SuccessRate, "evaluation confidence upper bound");
+
+    var encoder = new DelegatePolicyValueFeatureEncoder<int, string>(
+        policyFeatureCount: 2,
+        valueFeatureCount: 2,
+        (observation, _, action) =>
+            [1.0, action == "right" ? observation : -observation],
+        (observation, _, _) => [1.0, observation]
+    );
+    var linear = new LinearPolicyValueModel<int, string>(encoder, playerCount: 1);
+    var trainingSamples = new[]
+    {
+        new PolicyValueSample<int, string>(
+            -1,
+            0,
+            ["left", "right"],
+            "left",
+            [new PolicyTarget<string>("left", 1.0)],
+            [0.0],
+            [-1.0]
+        ),
+        new PolicyValueSample<int, string>(
+            1,
+            0,
+            ["left", "right"],
+            "right",
+            [new PolicyTarget<string>("right", 1.0)],
+            [0.0],
+            [1.0]
+        ),
+    };
+    LinearPolicyValueTrainingResult training = LinearPolicyValueTrainer.Train(
+        linear,
+        trainingSamples,
+        new LinearPolicyValueTrainingOptions(
+            epochs: 100,
+            batchSize: 2,
+            learningRate: 0.1,
+            l2: 0.0
+        )
+    );
+    Equal(200, training.Samples, "linear trainer sample count");
+    Equal(100, training.Updates, "linear trainer update count");
+    PolicyValuePrediction<string> positive = linear.Predict(1, 0, ["left", "right"]);
+    PolicyValuePrediction<string> negative = linear.Predict(-1, 0, ["left", "right"]);
+    True(positive.Priors.Single(item => item.Action == "right").Prior > 0.95, "linear policy positive");
+    True(negative.Priors.Single(item => item.Action == "left").Prior > 0.95, "linear policy negative");
+    True(positive.Values[0] > 0.9 && negative.Values[0] < -0.9, "linear value fit");
+
+    LinearPolicyValueCheckpoint checkpoint = linear.ExportCheckpoint();
+    Equal(linear.ParameterCount, checkpoint.PolicyWeights.Count
+        + checkpoint.ValueWeights.Sum(weights => weights.Count), "linear checkpoint parameters");
+    var restoredLinear = new LinearPolicyValueModel<int, string>(encoder, checkpoint);
+    PolicyValuePrediction<string> restoredPrediction = restoredLinear.Predict(1, 0, ["left", "right"]);
+    Near(positive.Priors[1].Prior, restoredPrediction.Priors[1].Prior, 1e-12, "linear checkpoint policy");
+    Near(positive.Values[0], restoredPrediction.Values[0], 1e-12, "linear checkpoint value");
+    LinearPolicyValueCheckpoint serializedCheckpoint = LinearPolicyValueCheckpoint.FromJson(
+        checkpoint.ToJson(writeIndented: true)
+    );
+    var serializedLinear = new LinearPolicyValueModel<int, string>(encoder, serializedCheckpoint);
+    PolicyValuePrediction<string> serializedPrediction = serializedLinear.Predict(1, 0, ["left", "right"]);
+    Near(positive.Priors[1].Prior, serializedPrediction.Priors[1].Prior, 1e-12,
+        "linear serialized checkpoint policy");
+    Near(positive.Values[0], serializedPrediction.Values[0], 1e-12,
+        "linear serialized checkpoint value");
+}
+
 static DecisionScope Scope(int units)
 {
     return new DecisionScope(1, new DecisionBudget(units), new DeterministicRandomStream(7));
@@ -473,6 +704,16 @@ static void True(bool value, string label)
 static void Equal<T>(T expected, T actual, string label)
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
+    {
+        throw new InvalidOperationException(
+            $"Verification failed: {label}. Expected '{expected}', got '{actual}'."
+        );
+    }
+}
+
+static void Near(double expected, double actual, double tolerance, string label)
+{
+    if (Math.Abs(expected - actual) > tolerance)
     {
         throw new InvalidOperationException(
             $"Verification failed: {label}. Expected '{expected}', got '{actual}'."
@@ -537,4 +778,114 @@ sealed class LineGraph(int count) : IPathGraph<int>, IFlowGraph<int>
     public double Cost(int from, int to) => 1.0;
     public double Estimate(int from, int goal) => Math.Abs(goal - from);
     public IEnumerable<int> Incoming(int node) => Neighbors(node);
+}
+
+sealed class ToyGameState
+{
+    public int Position { get; set; }
+}
+
+sealed class ToyGameEnvironment : IGameEnvironment<ToyGameState, int, string>
+{
+    public const string Advance = "advance";
+    public const string Lose = "lose";
+
+    private readonly bool _duplicateActions;
+
+    public ToyGameEnvironment(GameEnvironmentSpec? spec = null, bool duplicateActions = false)
+    {
+        Spec = spec ?? new GameEnvironmentSpec("toy_line", 1);
+        _duplicateActions = duplicateActions;
+    }
+
+    public GameEnvironmentSpec Spec { get; }
+
+    public ToyGameState Reset(int seed) => new();
+    public ToyGameState Clone(ToyGameState state) => new() { Position = state.Position };
+    public string StateKey(ToyGameState state) => state.Position.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    public int CurrentActor(ToyGameState state) => Result(state).IsFinished ? GameActors.Terminal : 0;
+    public int Observe(ToyGameState state, int actor) => state.Position;
+    public IReadOnlyList<string> LegalActions(ToyGameState state) => _duplicateActions
+        ? [Advance, Advance]
+        : [Advance, Lose];
+    public IReadOnlyList<ChanceOutcome<string>> ChanceOutcomes(ToyGameState state) => [];
+
+    public GameEpisodeResult Result(ToyGameState state)
+    {
+        if (state.Position >= 3)
+        {
+            return new GameEpisodeResult(GameResultStatus.Terminated, [1.0], "win");
+        }
+        if (state.Position < 0)
+        {
+            return new GameEpisodeResult(GameResultStatus.Terminated, [-1.0], "loss");
+        }
+        return GameEpisodeResult.Running(1);
+    }
+
+    public GameTransition<ToyGameState> Step(ToyGameState state, string action)
+    {
+        state.Position = action switch
+        {
+            Advance => state.Position + 1,
+            Lose => -1,
+            _ => throw new ArgumentException("Unknown action.", nameof(action)),
+        };
+        return new GameTransition<ToyGameState>(state, [0.0], Result(state));
+    }
+}
+
+sealed class ChanceGameState
+{
+    public int Phase { get; set; }
+    public double Payoff { get; set; }
+}
+
+sealed class ChanceGameEnvironment : IGameEnvironment<ChanceGameState, int, string>
+{
+    public GameEnvironmentSpec Spec { get; } = new(
+        "toy_chance",
+        1,
+        dynamics: GameDynamics.Stochastic
+    );
+
+    public ChanceGameState Reset(int seed) => new();
+    public ChanceGameState Clone(ChanceGameState state) => new() { Phase = state.Phase, Payoff = state.Payoff };
+    public string StateKey(ChanceGameState state) => $"{state.Phase}:{state.Payoff}";
+    public int CurrentActor(ChanceGameState state) => state.Phase switch
+    {
+        0 => 0,
+        1 => GameActors.Chance,
+        _ => GameActors.Terminal,
+    };
+    public int Observe(ChanceGameState state, int actor) => state.Phase;
+    public IReadOnlyList<string> LegalActions(ChanceGameState state) => state.Phase == 0 ? ["roll"] : [];
+    public IReadOnlyList<ChanceOutcome<string>> ChanceOutcomes(ChanceGameState state) => state.Phase == 1
+        ? [new ChanceOutcome<string>("good", 0.75), new ChanceOutcome<string>("bad", 0.25)]
+        : [];
+
+    public GameEpisodeResult Result(ChanceGameState state)
+    {
+        return state.Phase < 2
+            ? GameEpisodeResult.Running(1)
+            : new GameEpisodeResult(GameResultStatus.Terminated, [state.Payoff]);
+    }
+
+    public GameTransition<ChanceGameState> Step(ChanceGameState state, string action)
+    {
+        if (state.Phase == 0 && action == "roll")
+        {
+            state.Phase = 1;
+        }
+        else if (state.Phase == 1 && action is "good" or "bad")
+        {
+            state.Phase = 2;
+            state.Payoff = action == "good" ? 1.0 : -1.0;
+        }
+        else
+        {
+            throw new ArgumentException("Unknown action.", nameof(action));
+        }
+        return new GameTransition<ChanceGameState>(state, [0.0], Result(state));
+    }
 }

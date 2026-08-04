@@ -54,12 +54,18 @@
 ## AI
 - `Fw.Rt.AI` 是纯 C# 通用算法库，不是第二套 system runtime；宿主 system 负责生命周期、读取 context 和把结果转换成自己的 intent。
 - `Core` 提供固定工作量 `DecisionBudget`、确定性 `DecisionScope` 和有界 `DecisionTrace`；真实耗时只能监控，不得决定权威算法的停止位置。
+- `Environment` 用 `IGameEnvironment<TState,TObservation,TAction>` 描述 reset、clone、状态 key、当前行动者、玩家观察、合法动作、机会结果、终局收益和 step；搜索只操作 clone，不直接修改宿主权威状态。
+- 环境元数据显式声明确定/随机、完全/不完全信息、顺序/同时行动和收益类型；`GameActors` 保留 chance、terminal 与 simultaneous 特殊行动者，终局和资源上限截断不得混为一类。
+- `Model` 的 `IPolicyValueModel` 只接收玩家观察和当前合法动作，返回可变动作集合上的先验与逐玩家价值；高容量模型运行时由宿主注入。框架另提供由宿主特征编码器驱动、可导出 checkpoint 的 `LinearPolicyValueModel`，作为无外部 ML 依赖的可训练基线和接入探针。
+- `Search` 提供可暂停的确定性 `BeamSearch` 和 PUCT。Beam 只接受单人或合作型确定性规划；PUCT 支持完全信息的顺序玩家与显式 chance 节点，按稳定动作顺序打破平局。不完全信息必须先由宿主做确定化或实现信息集算法，框架不会把完全信息搜索伪装成公平策略。
+- 搜索预算分别按展开节点数和模拟次数计量；终局 `Payoffs` 是完整局面价值，`Transition.Rewards` 留给训练轨迹，搜索不会把两者重复累计。
+- `Training` 提供策略目标、策略价值样本、完整/截断轨迹、确定性定容 replay buffer，以及对线性基线执行交叉熵与价值回归的固定顺序小批量训练器；`Evaluation` 分开统计成功、失败、平局、截断、平均收益和 Wilson 成功率区间。
 - `Utility` 按稳定注册顺序评分，支持权重、确定性噪声与切换阈值；分数相同保持先注册项。
 - `Behavior` 使用 `Success / Failure / Running / Suspended`，只读树定义与 `BehaviorSession` 分离，同一棵树可供多个会话使用。
 - `Plan` 提供基于 typed fact/action/goal 的增量 GOAP；`PlanSearch` 在预算耗尽后保留搜索状态，下一 tick 继续。
 - `Nav` 提供增量 A*、LRU `PathCache`、反向邻接流场和基于 `System.Numerics.Vector2` 的 Steering，不依赖 Godot 类型。
 - `Policy` 只定义本地、远程和回退策略合同；HTTP、API key、prompt、模型供应商、输入过滤与游戏语义留在宿主工程。
-- AI 模块不读取宿主 context、不直接修改世界、不生成具体游戏命令，也不要求游戏同时使用全部算法。
+- AI 模块不读取宿主 context、不直接修改世界、不生成具体游戏命令，也不要求游戏同时使用全部算法；状态/动作编码、奖励、胜负、课程和训练参数始终属于宿主游戏。
 
 ## Present
 - `FUI` 使用 `open / close` 管理 form 与 UI layer。

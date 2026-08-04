@@ -51,6 +51,14 @@
 ## AI 算法
 - 宿主在自己的 core system 中创建并调用 AI 对象；不要给 Utility、Behavior、Plan 或 Nav 再套 `init/tick/shutdown` 生命周期。
 - 每次权威计算创建 `DecisionScope(tick, budget, random, trace)`；budget 使用候选数或节点数，不使用毫秒数。
+- 接入整局 AI 时先实现 `IGameEnvironment<TState,TObservation,TAction>`：`Clone` 必须隔离可变状态，`StateKey` 必须确定，合法动作必须唯一且顺序稳定，`Step` 只修改传入的搜索副本。
+- `Result` 对仍在进行的局返回 `Running`，真实结局返回 `Terminated`，动作/回合上限返回 `Truncated`；每一步 rewards 和最终 payoffs 都按 `Spec.PlayerCount` 返回。
+- 单人确定性关卡先用 `BeamSearch` 和宿主启发式函数建立可解释基线；每帧继续对同一实例调用 `Step(scope)`，成功后只提交结果中的第一个动作并重新从权威状态搜索。
+- 大分支、随机或多玩家顺序游戏使用 `PuctSearch`；当前实现要求完全信息，隐藏信息游戏应由宿主先按玩家信息集确定化。`IPolicyValueModel` 必须只根据传入 observation 与 legal actions 生成先验和逐玩家价值，缺失先验会被归一化为零，全部为零时退化为均匀先验。
+- 自博弈时把根节点访问分布、最终选中动作、即时 rewards 和最终 payoffs 写入 `PolicyValueSample`/`TrainingTrajectory`；用 `ReplayBuffer` 固定容量并用框架随机流确定性抽样。
+- 无 ML 运行时的首个训练闭环可实现 `IPolicyValueFeatureEncoder`，用 `LinearPolicyValueTrainer` 训练并通过 `LinearPolicyValueCheckpoint.ToJson/FromJson` 持久化；policy 特征必须同时编码观察、行动者和候选动作，value 特征必须明确观察者与被估值玩家，输入应在宿主侧归一化。宿主还应在 checkpoint 外层记录特征 schema id、数据集哈希和训练配置。
+- 线性模型只用于验证数据、训练、checkpoint、推理和搜索接线，不能替代复杂游戏所需的神经网络；升级模型时保持 observation/action、样本和评测合同不变，由宿主提供新的 `IPolicyValueModel`。
+- 批量评测用 `EvaluationAccumulator`；发布门槛同时检查成功率、Wilson 下界、截断率、平均步数和与旧策略同种子对照，不只看单局通关。
 - Utility 用 `UtilitySelector` 选择目标，FSM 用现有 `StateMachine` 稳定执行动作，Behavior Tree 用 `BehaviorSession` 保存 Running 节点。
 - GOAP 使用 `GoalPlanner.Begin` 创建独立 `PlanSearch`，A* 直接创建 `PathSearch`；返回 `Searching` 时保留对象并在后续 tick 继续调用 `Step`。
 - 流场图必须通过 `IFlowGraph.Incoming` 提供反向邻接；普通 A* 图通过 `IPathGraph.Neighbors` 提供正向邻接。

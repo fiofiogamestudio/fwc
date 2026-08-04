@@ -66,6 +66,124 @@ type sealed class Fw.Rt.AI.Core.DecisionTraceEntry : System.IEquatable<Fw.Rt.AI.
   static method System.Boolean op_Inequality(Fw.Rt.AI.Core.DecisionTraceEntry left, Fw.Rt.AI.Core.DecisionTraceEntry right)
 type interface Fw.Rt.AI.Core.IDecisionTrace
   method System.Void Write(System.Int32 tick, System.String module, System.String event, System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> data = null)
+type sealed class Fw.Rt.AI.Environment.ChanceOutcome<TAction>
+  ctor(TAction action, System.Double probability)
+  property System.Double Probability {get;}
+  property TAction Action {get;}
+type static class Fw.Rt.AI.Environment.GameActors
+  const System.Int32 Chance = -1
+  const System.Int32 Simultaneous = -3
+  const System.Int32 Terminal = -2
+type enum Fw.Rt.AI.Environment.GameDynamics : System.Int32
+  const Fw.Rt.AI.Environment.GameDynamics Deterministic = 0
+  const Fw.Rt.AI.Environment.GameDynamics Stochastic = 1
+type sealed class Fw.Rt.AI.Environment.GameEnvironmentSpec
+  ctor(System.String id, System.Int32 playerCount, Fw.Rt.AI.Environment.GameDynamics dynamics = Deterministic, Fw.Rt.AI.Environment.GameInformation information = Perfect, Fw.Rt.AI.Environment.GameMoveMode moveMode = Sequential, Fw.Rt.AI.Environment.GamePayoffMode payoffMode = SinglePlayer)
+  property Fw.Rt.AI.Environment.GameDynamics Dynamics {get;}
+  property Fw.Rt.AI.Environment.GameInformation Information {get;}
+  property Fw.Rt.AI.Environment.GameMoveMode MoveMode {get;}
+  property Fw.Rt.AI.Environment.GamePayoffMode PayoffMode {get;}
+  property System.Int32 PlayerCount {get;}
+  property System.String Id {get;}
+type sealed class Fw.Rt.AI.Environment.GameEpisodeResult
+  ctor(Fw.Rt.AI.Environment.GameResultStatus status, System.Collections.Generic.IEnumerable<System.Double> payoffs, System.String outcome = "", System.String reason = "")
+  property Fw.Rt.AI.Environment.GameResultStatus Status {get;}
+  property System.Boolean IsFinished {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> Payoffs {get;}
+  property System.String Outcome {get;}
+  property System.String Reason {get;}
+  static method Fw.Rt.AI.Environment.GameEpisodeResult Running(System.Int32 playerCount)
+type enum Fw.Rt.AI.Environment.GameInformation : System.Int32
+  const Fw.Rt.AI.Environment.GameInformation Imperfect = 1
+  const Fw.Rt.AI.Environment.GameInformation Perfect = 0
+type enum Fw.Rt.AI.Environment.GameMoveMode : System.Int32
+  const Fw.Rt.AI.Environment.GameMoveMode Sequential = 0
+  const Fw.Rt.AI.Environment.GameMoveMode Simultaneous = 1
+type enum Fw.Rt.AI.Environment.GamePayoffMode : System.Int32
+  const Fw.Rt.AI.Environment.GamePayoffMode Cooperative = 2
+  const Fw.Rt.AI.Environment.GamePayoffMode GeneralSum = 3
+  const Fw.Rt.AI.Environment.GamePayoffMode SinglePlayer = 0
+  const Fw.Rt.AI.Environment.GamePayoffMode ZeroSum = 1
+type enum Fw.Rt.AI.Environment.GameResultStatus : System.Int32
+  const Fw.Rt.AI.Environment.GameResultStatus Running = 0
+  const Fw.Rt.AI.Environment.GameResultStatus Terminated = 1
+  const Fw.Rt.AI.Environment.GameResultStatus Truncated = 2
+type sealed class Fw.Rt.AI.Environment.GameTransition<TState>
+  ctor(TState state, System.Collections.Generic.IEnumerable<System.Double> rewards, Fw.Rt.AI.Environment.GameEpisodeResult result)
+  property Fw.Rt.AI.Environment.GameEpisodeResult Result {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> Rewards {get;}
+  property TState State {get;}
+type interface Fw.Rt.AI.Environment.IGameEnvironment<TState,TObservation,TAction>
+  method Fw.Rt.AI.Environment.GameEpisodeResult Result(TState state)
+  method Fw.Rt.AI.Environment.GameTransition<TState> Step(TState state, TAction action)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Environment.ChanceOutcome<TAction>> ChanceOutcomes(TState state)
+  method System.Collections.Generic.IReadOnlyList<TAction> LegalActions(TState state)
+  method System.Int32 CurrentActor(TState state)
+  method System.String StateKey(TState state)
+  method TObservation Observe(TState state, System.Int32 actor)
+  method TState Clone(TState state)
+  method TState Reset(System.Int32 seed)
+  property Fw.Rt.AI.Environment.GameEnvironmentSpec Spec {get;}
+type sealed class Fw.Rt.AI.Evaluation.EvaluationAccumulator
+  ctor(System.Int32 actor = 0, System.Double successThreshold = 0.5, System.Double failureThreshold = -0.5)
+  method Fw.Rt.AI.Evaluation.EvaluationSummary Snapshot()
+  method System.Void Add(Fw.Rt.AI.Environment.GameEpisodeResult result, System.Int32 steps = 0)
+type sealed class Fw.Rt.AI.Evaluation.EvaluationSummary
+  ctor(System.Int32 episodes, System.Int32 completed, System.Int32 truncated, System.Int32 successes, System.Int32 failures, System.Int32 draws, System.Double successRate, System.Double successRateLower, System.Double successRateUpper, System.Double meanPayoff, System.Double meanSteps)
+  property System.Double MeanPayoff {get;}
+  property System.Double MeanSteps {get;}
+  property System.Double SuccessRate {get;}
+  property System.Double SuccessRateLower {get;}
+  property System.Double SuccessRateUpper {get;}
+  property System.Int32 Completed {get;}
+  property System.Int32 Draws {get;}
+  property System.Int32 Episodes {get;}
+  property System.Int32 Failures {get;}
+  property System.Int32 Successes {get;}
+  property System.Int32 Truncated {get;}
+type sealed class Fw.Rt.AI.Model.ActionPrior<TAction>
+  ctor(TAction action, System.Double prior)
+  property System.Double Prior {get;}
+  property TAction Action {get;}
+type sealed class Fw.Rt.AI.Model.DelegatePolicyValueFeatureEncoder<TObservation,TAction> : Fw.Rt.AI.Model.IPolicyValueFeatureEncoder<TObservation,TAction>
+  ctor(System.Int32 policyFeatureCount, System.Int32 valueFeatureCount, System.Func<TObservation,System.Int32,TAction,System.Collections.Generic.IReadOnlyList<System.Double>> encodePolicy, System.Func<TObservation,System.Int32,System.Int32,System.Collections.Generic.IReadOnlyList<System.Double>> encodeValue)
+  method System.Collections.Generic.IReadOnlyList<System.Double> EncodePolicy(TObservation observation, System.Int32 actor, TAction action)
+  method System.Collections.Generic.IReadOnlyList<System.Double> EncodeValue(TObservation observation, System.Int32 observer, System.Int32 player)
+  property System.Int32 PolicyFeatureCount {get;}
+  property System.Int32 ValueFeatureCount {get;}
+type sealed class Fw.Rt.AI.Model.DelegatePolicyValueModel<TObservation,TAction> : Fw.Rt.AI.Model.IPolicyValueModel<TObservation,TAction>
+  ctor(System.Func<TObservation,System.Int32,System.Collections.Generic.IReadOnlyList<TAction>,Fw.Rt.AI.Model.PolicyValuePrediction<TAction>> predict)
+  method Fw.Rt.AI.Model.PolicyValuePrediction<TAction> Predict(TObservation observation, System.Int32 actor, System.Collections.Generic.IReadOnlyList<TAction> legalActions)
+type interface Fw.Rt.AI.Model.IPolicyValueFeatureEncoder<TObservation,TAction>
+  method System.Collections.Generic.IReadOnlyList<System.Double> EncodePolicy(TObservation observation, System.Int32 actor, TAction action)
+  method System.Collections.Generic.IReadOnlyList<System.Double> EncodeValue(TObservation observation, System.Int32 observer, System.Int32 player)
+  property System.Int32 PolicyFeatureCount {get;}
+  property System.Int32 ValueFeatureCount {get;}
+type interface Fw.Rt.AI.Model.IPolicyValueModel<TObservation,TAction>
+  method Fw.Rt.AI.Model.PolicyValuePrediction<TAction> Predict(TObservation observation, System.Int32 actor, System.Collections.Generic.IReadOnlyList<TAction> legalActions)
+type sealed class Fw.Rt.AI.Model.LinearPolicyValueCheckpoint
+  const System.Int32 CurrentVersion = 1
+  ctor(System.Int32 version, System.Int32 playerCount, System.Collections.Generic.IEnumerable<System.Double> policyWeights, System.Collections.Generic.IEnumerable<System.Collections.Generic.IEnumerable<System.Double>> valueWeights)
+  method System.String ToJson(System.Boolean writeIndented = false)
+  property System.Collections.Generic.IReadOnlyList<System.Collections.Generic.IReadOnlyList<System.Double>> ValueWeights {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> PolicyWeights {get;}
+  property System.Int32 PlayerCount {get;}
+  property System.Int32 Version {get;}
+  static method Fw.Rt.AI.Model.LinearPolicyValueCheckpoint FromJson(System.String json)
+type sealed class Fw.Rt.AI.Model.LinearPolicyValueModel<TObservation,TAction> : Fw.Rt.AI.Model.IPolicyValueModel<TObservation,TAction>
+  ctor(Fw.Rt.AI.Model.IPolicyValueFeatureEncoder<TObservation,TAction> encoder, Fw.Rt.AI.Model.LinearPolicyValueCheckpoint checkpoint)
+  ctor(Fw.Rt.AI.Model.IPolicyValueFeatureEncoder<TObservation,TAction> encoder, System.Int32 playerCount)
+  method Fw.Rt.AI.Model.LinearPolicyValueCheckpoint ExportCheckpoint()
+  method Fw.Rt.AI.Model.PolicyValuePrediction<TAction> Predict(TObservation observation, System.Int32 actor, System.Collections.Generic.IReadOnlyList<TAction> legalActions)
+  property System.Int32 ParameterCount {get;}
+  property System.Int32 PlayerCount {get;}
+type sealed class Fw.Rt.AI.Model.PolicyValuePrediction<TAction>
+  ctor(System.Collections.Generic.IEnumerable<Fw.Rt.AI.Model.ActionPrior<TAction>> priors, System.Collections.Generic.IEnumerable<System.Double> values)
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Model.ActionPrior<TAction>> Priors {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> Values {get;}
+type sealed class Fw.Rt.AI.Model.UniformPolicyValueModel<TObservation,TAction> : Fw.Rt.AI.Model.IPolicyValueModel<TObservation,TAction>
+  ctor(System.Int32 playerCount)
+  method Fw.Rt.AI.Model.PolicyValuePrediction<TAction> Predict(TObservation observation, System.Int32 actor, System.Collections.Generic.IReadOnlyList<TAction> legalActions)
 type sealed class Fw.Rt.AI.Nav.FlowField<TNode>
   ctor(Fw.Rt.AI.Nav.IFlowGraph<TNode> graph, TNode goal, System.Collections.Generic.IEqualityComparer<TNode> comparer = null)
   method System.Boolean Step(Fw.Rt.AI.Core.DecisionScope scope)
@@ -192,6 +310,101 @@ type enum Fw.Rt.AI.Policy.PolicyStatus : System.Int32
 type sealed class Fw.Rt.AI.Policy.RemotePolicy<TInput,TOutput> : Fw.Rt.AI.Policy.IModelPolicy<TInput,TOutput>
   ctor(System.Func<TInput,System.Threading.CancellationToken,System.Threading.Tasks.ValueTask<Fw.Rt.AI.Policy.PolicyResult<TOutput>>> evaluate)
   method System.Threading.Tasks.ValueTask<Fw.Rt.AI.Policy.PolicyResult<TOutput>> EvaluateAsync(TInput input, System.Threading.CancellationToken cancellationToken = null)
+type sealed class Fw.Rt.AI.Search.BeamSearch<TState,TObservation,TAction>
+  ctor(Fw.Rt.AI.Environment.IGameEnvironment<TState,TObservation,TAction> environment, TState rootState, System.Func<TState,System.Int32,System.Double> evaluate, Fw.Rt.AI.Search.BeamSearchOptions options = null)
+  method Fw.Rt.AI.Search.BeamSearchResult<TAction> Step(Fw.Rt.AI.Core.DecisionScope scope)
+  property System.Boolean IsFinished {get;}
+type sealed class Fw.Rt.AI.Search.BeamSearchOptions
+  ctor(System.Int32 width = 16, System.Int32 maxDepth = 8, System.Int32 actor = 0, System.Double successPayoff = 1)
+  property System.Double SuccessPayoff {get;}
+  property System.Int32 Actor {get;}
+  property System.Int32 MaxDepth {get;}
+  property System.Int32 Width {get;}
+type sealed class Fw.Rt.AI.Search.BeamSearchResult<TAction>
+  ctor(Fw.Rt.AI.Search.BeamSearchStatus status, System.Collections.Generic.IEnumerable<TAction> actions, System.Double score, System.Int32 depth, System.Int32 expandedNodes, System.Int32 generatedNodes)
+  property Fw.Rt.AI.Search.BeamSearchStatus Status {get;}
+  property System.Boolean IsFinished {get;}
+  property System.Collections.Generic.IReadOnlyList<TAction> Actions {get;}
+  property System.Double Score {get;}
+  property System.Int32 Depth {get;}
+  property System.Int32 ExpandedNodes {get;}
+  property System.Int32 GeneratedNodes {get;}
+type enum Fw.Rt.AI.Search.BeamSearchStatus : System.Int32
+  const Fw.Rt.AI.Search.BeamSearchStatus DepthLimit = 3
+  const Fw.Rt.AI.Search.BeamSearchStatus Exhausted = 2
+  const Fw.Rt.AI.Search.BeamSearchStatus Searching = 0
+  const Fw.Rt.AI.Search.BeamSearchStatus Success = 1
+type sealed class Fw.Rt.AI.Search.PuctActionStatistics<TAction>
+  ctor(TAction action, System.Double prior, System.Int32 visits, System.Collections.Generic.IEnumerable<System.Double> meanValues)
+  property System.Collections.Generic.IReadOnlyList<System.Double> MeanValues {get;}
+  property System.Double Prior {get;}
+  property System.Int32 Visits {get;}
+  property TAction Action {get;}
+type sealed class Fw.Rt.AI.Search.PuctSearch<TState,TObservation,TAction>
+  ctor(Fw.Rt.AI.Environment.IGameEnvironment<TState,TObservation,TAction> environment, TState rootState, Fw.Rt.AI.Model.IPolicyValueModel<TObservation,TAction> model, Fw.Rt.AI.Search.PuctSearchOptions options = null)
+  method Fw.Rt.AI.Search.PuctSearchResult<TAction> Step(Fw.Rt.AI.Core.DecisionScope scope)
+  property System.Boolean IsFinished {get;}
+type sealed class Fw.Rt.AI.Search.PuctSearchOptions
+  ctor(System.Int32 simulationLimit = 256, System.Int32 maxDepth = 128, System.Double exploration = 1.25)
+  property System.Double Exploration {get;}
+  property System.Int32 MaxDepth {get;}
+  property System.Int32 SimulationLimit {get;}
+type sealed class Fw.Rt.AI.Search.PuctSearchResult<TAction>
+  ctor(Fw.Rt.AI.Search.PuctSearchStatus status, System.Boolean hasAction, TAction action, System.Int32 simulations, System.Collections.Generic.IEnumerable<System.Double> rootMeanValues, System.Collections.Generic.IEnumerable<Fw.Rt.AI.Search.PuctActionStatistics<TAction>> actions)
+  property Fw.Rt.AI.Search.PuctSearchStatus Status {get;}
+  property System.Boolean HasAction {get;}
+  property System.Boolean IsFinished {get;}
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Search.PuctActionStatistics<TAction>> Actions {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> RootMeanValues {get;}
+  property System.Int32 Simulations {get;}
+  property TAction Action {get;}
+type enum Fw.Rt.AI.Search.PuctSearchStatus : System.Int32
+  const Fw.Rt.AI.Search.PuctSearchStatus Complete = 1
+  const Fw.Rt.AI.Search.PuctSearchStatus Searching = 0
+type static class Fw.Rt.AI.Training.LinearPolicyValueTrainer
+  static method Fw.Rt.AI.Training.LinearPolicyValueTrainingResult Train<TObservation,TAction>(Fw.Rt.AI.Model.LinearPolicyValueModel<TObservation,TAction> model, System.Collections.Generic.IEnumerable<Fw.Rt.AI.Training.PolicyValueSample<TObservation,TAction>> samples, Fw.Rt.AI.Training.LinearPolicyValueTrainingOptions options = null)
+type sealed class Fw.Rt.AI.Training.LinearPolicyValueTrainingOptions
+  ctor(System.Int32 epochs = 1, System.Int32 batchSize = 32, System.Double learningRate = 0.01, System.Double l2 = 0.0001, System.Double gradientClip = 10)
+  property System.Double GradientClip {get;}
+  property System.Double L2 {get;}
+  property System.Double LearningRate {get;}
+  property System.Int32 BatchSize {get;}
+  property System.Int32 Epochs {get;}
+type sealed class Fw.Rt.AI.Training.LinearPolicyValueTrainingResult
+  ctor(System.Int32 samples, System.Int32 updates, System.Double meanPolicyLoss, System.Double meanValueLoss)
+  property System.Double MeanPolicyLoss {get;}
+  property System.Double MeanValueLoss {get;}
+  property System.Int32 Samples {get;}
+  property System.Int32 Updates {get;}
+type sealed class Fw.Rt.AI.Training.PolicyTarget<TAction>
+  ctor(TAction action, System.Double probability)
+  property System.Double Probability {get;}
+  property TAction Action {get;}
+type sealed class Fw.Rt.AI.Training.PolicyValueSample<TObservation,TAction>
+  ctor(TObservation observation, System.Int32 actor, System.Collections.Generic.IEnumerable<TAction> legalActions, TAction selectedAction, System.Collections.Generic.IEnumerable<Fw.Rt.AI.Training.PolicyTarget<TAction>> policyTargets, System.Collections.Generic.IEnumerable<System.Double> rewards, System.Collections.Generic.IEnumerable<System.Double> valueTargets, System.Double weight = 1)
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Training.PolicyTarget<TAction>> PolicyTargets {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> Rewards {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> ValueTargets {get;}
+  property System.Collections.Generic.IReadOnlyList<TAction> LegalActions {get;}
+  property System.Double Weight {get;}
+  property System.Int32 Actor {get;}
+  property TAction SelectedAction {get;}
+  property TObservation Observation {get;}
+type sealed class Fw.Rt.AI.Training.ReplayBuffer<TItem>
+  ctor(System.Int32 capacity)
+  method System.Collections.Generic.IReadOnlyList<TItem> Sample(System.Int32 count, Fw.Rt.Randomness.DeterministicRandomStream random)
+  method System.Collections.Generic.IReadOnlyList<TItem> Snapshot()
+  method System.Void Add(TItem item)
+  method System.Void AddRange(System.Collections.Generic.IEnumerable<TItem> items)
+  property System.Int32 Capacity {get;}
+  property System.Int32 Count {get;}
+type sealed class Fw.Rt.AI.Training.TrainingTrajectory<TObservation,TAction>
+  ctor(System.String environmentId, System.String episodeId, System.Int32 seed, System.Collections.Generic.IEnumerable<Fw.Rt.AI.Training.PolicyValueSample<TObservation,TAction>> samples, Fw.Rt.AI.Environment.GameEpisodeResult result)
+  property Fw.Rt.AI.Environment.GameEpisodeResult Result {get;}
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Training.PolicyValueSample<TObservation,TAction>> Samples {get;}
+  property System.Int32 Seed {get;}
+  property System.String EnvironmentId {get;}
+  property System.String EpisodeId {get;}
 type sealed class Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> : System.IEquatable<Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice>>
   ctor(System.String Id, TChoice Choice, System.Func<TContext,System.Double> Score, System.Double Weight = 1, System.Double Noise = 0)
   method Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> <Clone>$()
