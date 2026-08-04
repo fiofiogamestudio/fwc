@@ -9,6 +9,7 @@
 - C# EventBus 增加单 key payload 契约和派发前预检；StateMachine 统一自定义比较器并在生命周期回调失败后复位；LogBuffer 增加线程安全、即时容量裁剪、结构化字典快照和转发环拒绝。
 - `DeterministicRandomStream` 增加无模偏 `NextInt64` 与 step 耗尽保护，`RandomPicker` 不再用浮点数采样大权重。
 - Windows/Linux 完整测试链现在固定执行 `FwRuntime.Verify` 和 Godot 通用服务探针，并继续把非白名单 Godot 日志错误视为失败。
+- Godot 编辑器探针改用完成资源导入后退出的 `--import`，避免 4.6 在首帧 `--quit` 时读取尚未初始化的编辑器设置。
 
 ## 0.1.4 - 2026-07-19
 

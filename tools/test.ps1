@@ -248,7 +248,7 @@ try {
             $EditorLog = Join-Path $TestRoot "godot_editor.log"
             Invoke-Godot `
                 -Executable $Godot `
-                -Arguments @("--headless", "--editor", "--path", $TestRoot, "--log-file", $EditorLog, "--quit") `
+                -Arguments @("--headless", "--path", $TestRoot, "--log-file", $EditorLog, "--import") `
                 -Label "Godot editor check" `
                 -TimeoutSeconds $GodotEditorTimeoutSeconds
             Assert-GodotLog -Path $EditorLog -Label "Godot editor check"
