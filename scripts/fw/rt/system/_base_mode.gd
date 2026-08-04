@@ -120,6 +120,10 @@ func asset() -> Variant:
 	return _root.asset()
 
 
+func localization() -> Variant:
+	return _root.localization()
+
+
 func ui() -> Variant:
 	return _root.ui()
 

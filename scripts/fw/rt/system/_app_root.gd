@@ -7,6 +7,7 @@ const FEventBusScript = preload("../event/_event_bus.gd")
 const FLogScript = preload("../log/_log.gd")
 const FDisplayScript = preload("../display/_display.gd")
 const FDebugScript = preload("../debug/_debug.gd")
+const FLocalizationScript = preload("../localization/_localization.gd")
 const FUIScript = preload("../../vu/ui/_ui.gd")
 const FAudioScript = preload("../../vu/audio/_audio.gd")
 const SystemManagerScript = preload("_system_manager.gd")
@@ -18,6 +19,7 @@ var _events: RefCounted
 var _log: RefCounted
 var _display: RefCounted
 var _debug: RefCounted
+var _localization: RefCounted
 var _ui_root: CanvasLayer
 var _ui: RefCounted
 var _audio: RefCounted
@@ -34,6 +36,7 @@ func _ready() -> void:
 	_log = FLogScript.new()
 	_events = FEventBusScript.new()
 	_asset = FAssetScript.new()
+	_localization = FLocalizationScript.new()
 	_pool = FPoolScript.new()
 	_pool.setup(_mode_host)
 
@@ -79,6 +82,8 @@ func _exit_tree() -> void:
 		_events.clear()
 	if _debug:
 		_debug.clear()
+	if _localization:
+		_localization.clear()
 	_ui = null
 	_audio = null
 	_pool = null
@@ -87,6 +92,7 @@ func _exit_tree() -> void:
 	_log = null
 	_display = null
 	_debug = null
+	_localization = null
 
 
 func _physics_process(dt: float) -> void:
@@ -194,6 +200,10 @@ func pool() -> Variant:
 
 func asset() -> Variant:
 	return _asset
+
+
+func localization() -> Variant:
+	return _localization
 
 
 func events() -> Variant:

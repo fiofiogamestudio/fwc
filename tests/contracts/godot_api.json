@@ -11,6 +11,7 @@
 			"debug_service()->Nil;defaults=[]",
 			"display()->Nil;defaults=[]",
 			"events()->Nil;defaults=[]",
+			"localization()->Nil;defaults=[]",
 			"log_service()->Nil;defaults=[]",
 			"mode_host()->Node;defaults=[]",
 			"on_app_ready()->Nil;defaults=[]",
@@ -43,6 +44,7 @@
 			"handle_input(_event:InputEvent)->Nil;defaults=[]",
 			"init_systems()->bool;defaults=[]",
 			"is_entered()->bool;defaults=[]",
+			"localization()->Nil;defaults=[]",
 			"log_service()->Nil;defaults=[]",
 			"mode_host()->Node;defaults=[]",
 			"pool()->Nil;defaults=[]",
@@ -395,6 +397,72 @@
 		"properties": [
 			"template_mode:bool"
 		],
+		"signals": []
+	},
+	"FLocalization": {
+		"base": "RefCounted",
+		"constants": [
+			"PSEUDO_LOCALE:String=\"qps-ploc\""
+		],
+		"methods": [
+			"available_locales()->Array[String];defaults=[]",
+			"bind_asset_property(target:Object, property:StringName, asset_id:String, fallback:Nil)->int;defaults=[null]",
+			"bind_property(target:Object, property:StringName, message_id:String, args:Nil, fallback:String)->int;defaults=[null, \"\"]",
+			"canonicalize_locale(raw_locale:String)->String;defaults=[]",
+			"clear()->Nil;defaults=[]",
+			"clear_diagnostics()->Nil;defaults=[]",
+			"current_locale()->String;defaults=[]",
+			"default_locale()->String;defaults=[]",
+			"diagnostics()->Dictionary;defaults=[]",
+			"has_asset(asset_id:String, locale:String)->bool;defaults=[\"\"]",
+			"has_message(message_id:String, locale:String)->bool;defaults=[\"\"]",
+			"provider_ids()->Array[StringName];defaults=[]",
+			"refresh_bindings()->Nil;defaults=[]",
+			"register_provider(provider_id:StringName, provider:Nil, priority:int)->bool;defaults=[0]",
+			"resolve_asset(asset_id:String, fallback:Nil)->Nil;defaults=[null]",
+			"resolve_asset_for(locale:String, asset_id:String, fallback:Nil)->Nil;defaults=[null]",
+			"set_fallbacks(locale:String, fallback_locales:Array)->bool;defaults=[]",
+			"set_locale(raw_locale:String, persist:bool)->bool;defaults=[true]",
+			"set_locale_alias(alias:String, locale:String)->bool;defaults=[]",
+			"setup(default_locale:String, supported_locales:Array, initial_locale:String, fallback_chains:Dictionary, locale_store:Nil)->bool;defaults=[null, \"\", null, null]",
+			"translate(message_id:String, args:Dictionary, fallback:String)->String;defaults=[null, \"\"]",
+			"translate_for(locale:String, message_id:String, args:Dictionary, fallback:String)->String;defaults=[null, \"\"]",
+			"translate_message(message:Dictionary, locale:String)->String;defaults=[\"\"]",
+			"unbind(binding_id:int)->bool;defaults=[]",
+			"unregister_provider(provider_id:StringName)->bool;defaults=[]",
+			"update_binding(binding_id:int, args:Nil, localization_id:String)->bool;defaults=[null, \"\"]"
+		],
+		"properties": [],
+		"signals": [
+			"format_error(message_id:String, locale:String, detail:String)",
+			"locale_changed(locale:String)",
+			"missing_message(message_id:String, locale:String)"
+		]
+	},
+	"FLocalizationCatalog": {
+		"base": "RefCounted",
+		"constants": [
+			"SCHEMA_VERSION:int=1"
+		],
+		"methods": [
+			"add_alias(alias_id:String, target_id:String)->bool;defaults=[]",
+			"add_asset(asset_id:String, locale:String, value:Nil)->bool;defaults=[]",
+			"add_message(message_id:String, locale:String, text:String)->bool;defaults=[]",
+			"asset(locale:String, asset_id:String)->Nil;defaults=[]",
+			"asset_ids()->Array[String];defaults=[]",
+			"clear()->Nil;defaults=[]",
+			"has_asset(locale:String, asset_id:String)->bool;defaults=[]",
+			"has_message(locale:String, message_id:String)->bool;defaults=[]",
+			"load_catalog(data:Dictionary)->Array[String];defaults=[]",
+			"locales()->Array[String];defaults=[]",
+			"message(locale:String, message_id:String)->Nil;defaults=[]",
+			"message_ids()->Array[String];defaults=[]",
+			"metadata(message_id:String)->Dictionary;defaults=[]",
+			"resolve_id(raw_id:String)->String;defaults=[]",
+			"setup(catalog_namespace:String)->FLocalizationCatalog;defaults=[\"\"]",
+			"validate()->Array[String];defaults=[]"
+		],
+		"properties": [],
 		"signals": []
 	},
 	"FLog": {

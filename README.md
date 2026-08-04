@@ -5,7 +5,7 @@
 它提供四类能力：
 - Godot 运行时骨架：`AppRoot -> BaseMode -> SystemManager`
 - Godot UI / View 子框架：`FUI`、`FForm`、`FWidget`、`FViewRoot`、`FViewStore`、`FRefs`、`FProps`、`FBinding`、`FViewModel`
-- 通用运行时服务：资源、对象池、事件、状态机、日志、2D/3D 音频、显示和调试开关
+- 通用运行时服务：资源、本地化、对象池、事件、状态机、日志、2D/3D 音频、显示和调试开关
 - C# 工具链：`fw/tools/new.*`、`gen.*`、`build.*`、`test.*`
 
 框架维护文档在：

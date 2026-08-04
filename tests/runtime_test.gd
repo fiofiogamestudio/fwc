@@ -3,6 +3,8 @@ extends SceneTree
 const BindingScript = preload("res://fw/scripts/fw/vu/_binding.gd")
 const PoolScript = preload("res://fw/scripts/fw/rt/pool/_pool.gd")
 const AssetScript = preload("res://fw/scripts/fw/rt/_asset.gd")
+const LocalizationScript = preload("res://fw/scripts/fw/rt/localization/_localization.gd")
+const LocalizationCatalogScript = preload("res://fw/scripts/fw/rt/localization/_localization_catalog.gd")
 const AppRootScript = preload("res://fw/scripts/fw/rt/system/_app_root.gd")
 const BaseModeScript = preload("res://fw/scripts/fw/rt/system/_base_mode.gd")
 const BaseSystemScript = preload("res://fw/scripts/fw/rt/system/_base_system.gd")
@@ -32,6 +34,19 @@ class NodeSignalProbe:
 	extends Node
 
 	signal changed(value: int)
+
+
+class LocaleStoreProbe:
+	extends RefCounted
+
+	var loaded_locale := "EN"
+	var saved_locale := ""
+
+	func load_locale(_fallback: String) -> String:
+		return loaded_locale
+
+	func save_locale(locale: String) -> void:
+		saved_locale = locale
 
 
 class SystemProbe:
@@ -88,6 +103,7 @@ func _init() -> void:
 func _run() -> void:
 	_test_public_api()
 	_test_binding()
+	_test_localization()
 	_test_pool()
 	_test_view_store()
 	_test_ui_stack()
@@ -105,6 +121,8 @@ func _run() -> void:
 func _test_public_api() -> void:
 	_test_exact_public_api()
 	_check_methods(AssetScript.new(), [&"load", &"unload"], "FAsset")
+	_check_methods(LocalizationScript.new(), [&"setup", &"translate", &"resolve_asset", &"bind_property"], "FLocalization")
+	_check_methods(LocalizationCatalogScript.new(), [&"load_catalog", &"add_message", &"add_asset"], "FLocalizationCatalog")
 	_check_methods(PoolScript.new(), [&"setup", &"register_prefab", &"spawn", &"recycle", &"flush"], "FPool")
 	_check_methods(BaseModeScript.new(), [&"enter", &"tick", &"exit", &"add_system", &"init_systems"], "BaseMode")
 	_check_methods(BaseSystemScript.new(), [&"init", &"tick", &"shutdown"], "BaseSystem")
@@ -320,6 +338,70 @@ func _test_binding() -> void:
 	freed_binding.bind_signal(freed_emitter, &"changed", callback)
 	freed_emitter.free()
 	freed_binding.unbind()
+
+
+func _test_localization() -> void:
+	var base_catalog: Variant = LocalizationCatalogScript.new().setup("game")
+	var catalog_issues: Array[String] = base_catalog.load_catalog({
+		"schema_version": 1,
+		"namespace": "game",
+		"messages": {
+			"welcome": {"CN": "Welcome {name}", "EN": "Hello {name}"},
+			"items": {"CN": "{count} items", "EN": "{count, plural, =0 {No items} one {# item} other {# items}}"},
+			"role": {"CN": "{role}", "EN": "{role, select, admin {Administrator} other {Player}}"},
+			"escaped": {"CN": "{{name}} {name}", "EN": "{{name}} {name}"},
+		},
+		"assets": {
+			"logo": {"CN": "res://logo-cn.png", "EN": "res://logo-en.png"},
+		},
+		"aliases": {"hello": "welcome"},
+	})
+	_check(catalog_issues.is_empty(), "localization catalog fixture must validate: " + str(catalog_issues))
+
+	var override_catalog: Variant = LocalizationCatalogScript.new().setup("game")
+	override_catalog.add_message("welcome", "CN", "Override {name}")
+	var locale_store := LocaleStoreProbe.new()
+	var localization: Variant = LocalizationScript.new()
+	_check(
+		localization.setup("CN", ["CN", "EN", LocalizationScript.PSEUDO_LOCALE], "", {"EN": ["CN"]}, locale_store),
+		"localization setup must accept a valid locale configuration"
+	)
+	_check(localization.current_locale() == "EN", "localization must load its initial locale from the store")
+	_check(localization.register_provider(&"base", base_catalog, 0), "localization must register a base provider")
+	_check(localization.register_provider(&"override", override_catalog, 100), "localization must register an override provider")
+	_check(localization.translate("game.welcome", {"name": "Ada"}) == "Hello Ada", "same-locale base text must win before a higher-priority fallback locale")
+	_check(localization.translate("game.hello", {"name": "Ada"}) == "Hello Ada", "catalog aliases must resolve")
+	_check(localization.translate("game.items", {"count": 0}) == "No items", "plural exact branch must resolve")
+	_check(localization.translate("game.items", {"count": 1}) == "1 item", "plural one branch must resolve")
+	_check(localization.translate("game.items", {"count": 3}) == "3 items", "plural other branch must resolve")
+	_check(localization.translate("game.role", {"role": "admin"}) == "Administrator", "select branch must resolve")
+	_check(localization.translate("game.escaped", {"name": "Ada"}) == "{name} Ada", "escaped braces must remain literal")
+	_check(localization.translate_message({"id": "game.welcome", "args": {"name": "Lin"}}) == "Hello Lin", "localized message payload must resolve")
+	_check(localization.resolve_asset("game.logo") == "res://logo-en.png", "localized assets must resolve")
+
+	var label := Label.new()
+	root.add_child(label)
+	var binding_id: int = localization.bind_property(label, &"text", "game.welcome", {"name": "Mira"})
+	_check(binding_id > 0 and label.text == "Hello Mira", "localization binding must apply immediately")
+	_check(localization.set_locale("CN"), "localization must switch to a supported locale")
+	_check(label.text == "Override Mira", "localization binding must refresh after locale changes")
+	_check(locale_store.saved_locale == "CN", "localization must persist locale changes")
+	_check(localization.update_binding(binding_id, {"name": "Tao"}), "localization binding args must update")
+	_check(label.text == "Override Tao", "updated localization binding args must render")
+	_check(localization.unbind(binding_id), "localization binding must be removable")
+	label.free()
+
+	_check(localization.set_locale(LocalizationScript.PSEUDO_LOCALE, false), "pseudo locale must be selectable")
+	var pseudo_text: String = localization.translate("game.welcome", {"name": "QA"})
+	_check(pseudo_text.contains("!!") and pseudo_text.contains("QA"), "pseudo locale must expand resolved default text without corrupting args")
+	localization.set_locale("EN", false)
+	_check(localization.translate("game.missing", {}, "Fallback") == "Fallback", "missing messages must use their explicit fallback")
+	_check(not (localization.diagnostics().get("missing", {}) as Dictionary).is_empty(), "missing messages must be observable in diagnostics")
+
+	var invalid_catalog: Variant = LocalizationCatalogScript.new().setup("invalid")
+	invalid_catalog.add_message("placeholder", "CN", "{count}")
+	invalid_catalog.add_message("placeholder", "EN", "{value}")
+	_check(not invalid_catalog.validate().is_empty(), "catalog validation must reject placeholder drift")
 
 
 func _test_pool() -> void:

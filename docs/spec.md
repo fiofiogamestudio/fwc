@@ -25,7 +25,7 @@
 
 ## Runtime
 - Godot 运行链是 `AppRoot -> BaseMode -> SystemManager`。
-- `AppRoot` 创建 mode host、app system scope、`FUI`、`FPool`、`FAsset`、`FEventBus`、`FLog`、`FAudio`、`FDisplay` 和 `FDebug`，并负责 mode 切换。
+- `AppRoot` 创建 mode host、app system scope、`FUI`、`FPool`、`FAsset`、`FLocalization`、`FEventBus`、`FLog`、`FAudio`、`FDisplay` 和 `FDebug`，并负责 mode 切换。
 - `BaseMode` 负责场景、Godot system 和 presentation 装配。
 - `SystemManager` 按 phase 缓存后的顺序执行 `init / tick / shutdown`，shutdown 使用反向顺序。
 - C# `SystemRuntime` 使用同样的生命周期和 phase 语义，由 `GameCore` 持有。
@@ -75,6 +75,11 @@
 - `spawn(key, parent, owner, props)` 把生命周期 owner 和 props 显式传给对象；Pool 同时追踪 active/free 对象。
 - `FAsset` 保留 `load / unload` 固定缓存，并提供引用句柄、异步加载、路径归一化和自定义 provider；同路径并发异步请求只执行一次 provider load，加载失败不缓存空值。
 - `FAsset` 为每个缓存项保存实际加载 provider，保证 provider 从注册表移除后仍能成对 release；默认不允许在活动 handle 或加载请求存在时替换/注销 provider，`force` 只用于明确接受句柄失效的整体 teardown。
+- `FLocalization` 按“请求语言优先、provider 优先级次之”的确定顺序解析消息和资源；高优先级 provider 缺少当前语言时，先使用低优先级 provider 的当前语言，再进入配置回退链。
+- `FLocalizationCatalog` 使用稳定的点分消息 ID、显式 locale 字典、alias 和可选资源值；目录校验拒绝 alias 悬空/循环、空翻译和语言间参数漂移。
+- 文本格式支持命名参数、`plural/select/selectordinal`、显式数值分支和转义花括号；缺失消息与格式错误进入可查询诊断并只在首次出现时发 signal。
+- `bind_property/bind_asset_property` 在绑定时立即赋值，并在 locale 改变或 provider 变化时刷新；目标释放后自动剔除弱引用绑定。
+- C# core 只产生 `LocalizedMessage/LocalizedAsset` 语义引用，不选择语言、不读取目录；宿主 bridge 负责把 ID、参数和 fallback 传给表现层。
 - `FEventBus` 提供去重订阅、优先级、once 和安全快照派发；C# 同一 key 只允许一种 payload 类型，并在调用任何 listener 前完成类型预检。
 - `FStateMachine` 提供 guard、payload 与受限链式 transition；C# 自定义状态比较器同时作用于 state 和 transition，生命周期/事件回调抛错后清空当前状态并允许重新启动，`Clear` 即使 exit 失败也会移除注册。
 - `FLog` 提供 level、category threshold、结构化数据和固定容量历史；C# `LogBuffer / ILogSink` 的配置、写入与读取可并发使用，入队时固定结构化字典的浅快照，并拒绝直接或间接的 buffer 转发环。

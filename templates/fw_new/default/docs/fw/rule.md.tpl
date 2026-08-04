@@ -117,6 +117,10 @@
 - 表现层可以做动画、渐变和缓存，但不得改变 core 结果。
 - service 使用领域 API，不使用表现对象生命周期名；例如 FUI 使用 `open / close`，FPool 使用 `spawn / recycle / flush`，FAsset 使用 `load / unload`。
 - 事件、状态机、日志、音频、显示和调试服务只提供跨游戏机制，不保存具体玩法状态或内容表。
+- core 只输出稳定本地化 ID、结构化参数和可选 fallback，不读取当前语言，不把显示文本作为规则分支条件或存档主键。
+- 本地化目录、fallback、字体和 locale 资源属于表现层；基础游戏、DLC 与 Mod 通过独立 provider 接入，覆盖顺序必须显式且确定。
+- UI 不缓存已经翻译的字符串作为事实源；需要响应语言变化的控件使用 binding 或由 VM 重新生成。
+- 翻译参数名和富文本结构必须跨语言保持合同一致，缺失翻译、占位值和参数漂移由宿主 CI 阻止。
 - presentation object 包括 `actor / form / widget / fx`，对外统一使用 `setup / clear`，内部扩展点统一使用 `on_setup / on_clear`。
 - UI 打开采用事务语义：新 form 完成 setup 后才能替换旧 form；失败不得破坏现有 UI stack。
 - UI wrapper 与 form logic 的 `setup/attach` 必须先清理旧 owner，`clear/detach` 必须关闭其持有的 form；外部释放 form 后仍要修复 stack。

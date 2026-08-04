@@ -488,6 +488,17 @@ type sealed class Fw.Rt.Events.EventSubscription : System.IDisposable
   method System.Void Dispose()
   property System.Boolean IsActive {get;}
   property System.Int64 Id {get;}
+type sealed class Fw.Rt.Localization.LocalizedAsset
+  ctor(System.String id, System.String fallback = "")
+  property System.String Fallback {get;}
+  property System.String Id {get;}
+type sealed class Fw.Rt.Localization.LocalizedMessage
+  ctor(System.String id, System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> arguments = null, System.String fallback = "")
+  method Fw.Rt.Localization.LocalizedMessage WithArgument(System.String name, System.Object value)
+  method System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> ToPayload()
+  property System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Arguments {get;}
+  property System.String Fallback {get;}
+  property System.String Id {get;}
 type interface Fw.Rt.Logging.ILogSink
   method System.Void Write(Fw.Rt.Logging.LogEntry entry)
 type sealed class Fw.Rt.Logging.LogBuffer : Fw.Rt.Logging.ILogSink

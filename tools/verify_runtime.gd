@@ -6,6 +6,8 @@ const FDisplayScript = preload("res://fw/scripts/fw/rt/display/_display.gd")
 const FDebugScript = preload("res://fw/scripts/fw/rt/debug/_debug.gd")
 const FEventBusScript = preload("res://fw/scripts/fw/rt/event/_event_bus.gd")
 const FLogScript = preload("res://fw/scripts/fw/rt/log/_log.gd")
+const FLocalizationScript = preload("res://fw/scripts/fw/rt/localization/_localization.gd")
+const FLocalizationCatalogScript = preload("res://fw/scripts/fw/rt/localization/_localization_catalog.gd")
 const FPoolScript = preload("res://fw/scripts/fw/rt/pool/_pool.gd")
 const FStateMachineScript = preload("res://fw/scripts/fw/rt/state/_state_machine.gd")
 const SystemManagerScript = preload("res://fw/scripts/fw/rt/system/_system_manager.gd")
@@ -98,6 +100,8 @@ func _run() -> void:
 	if error.is_empty():
 		error = _verify_log()
 	if error.is_empty():
+		error = _verify_localization()
+	if error.is_empty():
 		error = _verify_audio_and_display()
 	if error.is_empty():
 		error = _verify_debug()
@@ -134,6 +138,43 @@ func _verify_event_bus() -> String:
 		return "FEventBus returned an incorrect invocation count."
 	if ",".join(_trace) != "high:7,low:7,low:8":
 		return "FEventBus priority or once semantics are incorrect: %s" % _trace
+	return ""
+
+
+func _verify_localization() -> String:
+	var catalog = FLocalizationCatalogScript.new().setup("verify")
+	var issues: Array[String] = catalog.load_catalog({
+		"schema_version": 1,
+		"messages": {
+			"turns": {
+				"zh-CN": "{count} turns",
+				"en": "{count, plural, one {# turn} other {# turns}}",
+			},
+		},
+		"assets": {"banner": {"zh-CN": "banner-cn", "en": "banner-en"}},
+	})
+	if not issues.is_empty():
+		return "FLocalizationCatalog validation failed: %s" % issues
+	var localization = FLocalizationScript.new()
+	if not localization.setup("zh-CN", ["zh-CN", "en"], "en", {"en": ["zh-CN"]}):
+		return "FLocalization setup failed."
+	if not localization.register_provider(&"verify", catalog):
+		return "FLocalization provider registration failed."
+	if localization.translate("verify.turns", {"count": 2}) != "2 turns":
+		return "FLocalization plural formatting failed."
+	if localization.resolve_asset("verify.banner") != "banner-en":
+		return "FLocalization asset resolution failed."
+	var label := Label.new()
+	root.add_child(label)
+	var binding_id: int = localization.bind_property(label, &"text", "verify.turns", {"count": 1})
+	if binding_id <= 0 or label.text != "1 turn":
+		label.free()
+		return "FLocalization property binding failed."
+	if not localization.set_locale("zh-CN", false) or label.text != "1 turns":
+		label.free()
+		return "FLocalization binding locale refresh failed."
+	localization.unbind(binding_id)
+	label.free()
 	return ""
 
 

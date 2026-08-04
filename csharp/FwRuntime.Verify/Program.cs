@@ -11,6 +11,7 @@ using Fw.Rt.AI.Training;
 using Fw.Rt.AI.Utility;
 using Fw.Rt.Events;
 using Fw.Rt.Logging;
+using Fw.Rt.Localization;
 using Fw.Rt.Randomness;
 using Fw.Rt.State;
 using Fw.Rt.Systems;
@@ -20,6 +21,7 @@ VerifyEventBus();
 VerifyStateMachine();
 VerifyDeterministicRandom();
 VerifyLogBuffer();
+VerifyLocalizationContracts();
 VerifyDecisionCore();
 VerifyUtility();
 VerifyBehavior();
@@ -31,7 +33,7 @@ VerifyBeamSearch();
 VerifyPuctSearch();
 VerifyTrainingAndEvaluation();
 
-Console.WriteLine("Verified FwRuntime systems, events, state, random, logging, and AI modules.");
+Console.WriteLine("Verified FwRuntime systems, events, state, random, logging, localization, and AI modules.");
 return;
 
 static void VerifySystemRuntime()
@@ -135,6 +137,31 @@ static void VerifyEventBus()
         "event payload preflight"
     );
     Equal(0, typedTrace.Count, "event payload mismatch invokes no listeners");
+}
+
+static void VerifyLocalizationContracts()
+{
+    var source = new Dictionary<string, object?>
+    {
+        ["count"] = 2,
+    };
+    var message = new LocalizedMessage("game.turns", source, "{count} turns");
+    source["count"] = 99;
+    Equal(2, message.Arguments["count"], "localized message argument snapshot");
+    Equal("{count} turns", message.Fallback, "localized message fallback");
+
+    var updated = message.WithArgument("count", 3);
+    Equal(2, message.Arguments["count"], "localized message remains immutable");
+    Equal(3, updated.Arguments["count"], "localized message argument update");
+    var payload = updated.ToPayload();
+    Equal("game.turns", payload["id"], "localized message payload id");
+    True(payload["args"] is IReadOnlyDictionary<string, object?>, "localized message payload args");
+
+    var asset = new LocalizedAsset("game.logo", "res://logo.png");
+    Equal("game.logo", asset.Id, "localized asset id");
+    Equal("res://logo.png", asset.Fallback, "localized asset fallback");
+    Throws<ArgumentException>(() => new LocalizedMessage(""), "localized message id validation");
+    Throws<ArgumentException>(() => new LocalizedAsset(""), "localized asset id validation");
 }
 
 static void VerifyStateMachine()

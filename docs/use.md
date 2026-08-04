@@ -48,6 +48,16 @@
 - C# 文件名、类名必须大小写完全一致，类型必须继承 `Godot.Node`。
 - 若创建失败，先检查 Godot .NET、Debug 构建和 `project.godot` assembly name，不回退到裸 `script.new()`。
 
+## 本地化
+- 用 `FLocalizationCatalog.setup(namespace).load_catalog(data)` 载入标准目录，再用 `FLocalization.register_provider(id, catalog, priority)` 注册基础游戏、DLC 和 Mod；优先级越大越先查找。
+- 用 `FLocalization.setup(default_locale, supported_locales, initial_locale, fallback_chains, locale_store)` 配置语言。`locale_store` 可选实现 `load_locale(fallback)` 和 `save_locale(locale)`，持久化策略留在宿主。
+- 业务代码使用稳定 ID：`localization.translate("game.ui.turns", {"count": turns}, "{count} turns")`。不要把中文原文当长期 ID；旧项目可在适配 provider 中维护 source-text alias。
+- 标准目录消息结构为 `{ "schema_version": 1, "namespace": "game", "messages": { "ui.ok": { "zh-CN": "确定", "en": "OK" } }, "assets": {}, "aliases": {} }`。
+- 复数和选择使用 `{count, plural, one {# item} other {# items}}` 与 `{role, select, admin {Administrator} other {Player}}`；所有语言必须保留相同参数名。
+- UI 可用 `bind_property(control, &"text", id, args, fallback)` 或 `bind_asset_property` 自动刷新；生命周期结束时调用 `unbind(token)`，服务也会清理已经释放的目标。
+- 开发/测试构建可把 `qps-ploc` 加入 supported locales 检查截断；发布门禁应读取 `diagnostics()` 并对缺失消息、参数错误和目录校验问题失败。
+- C# core 用 `LocalizedMessage`/`LocalizedAsset` 只传语义 ID、参数和 fallback；具体语言、字体、图片、音频与排版始终由表现层解析。
+
 ## AI 算法
 - 宿主在自己的 core system 中创建并调用 AI 对象；不要给 Utility、Behavior、Plan 或 Nav 再套 `init/tick/shutdown` 生命周期。
 - 每次权威计算创建 `DecisionScope(tick, budget, random, trace)`；budget 使用候选数或节点数，不使用毫秒数。
