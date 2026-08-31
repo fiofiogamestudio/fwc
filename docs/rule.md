@@ -21,6 +21,18 @@
 - View 只负责渲染适配，不拥有对象生命周期。
 - Form / Widget 是 UI 表现对象，负责 UI 结构、局部表现和交互信号。
 
+### 模块
+- `core` 是所有目标必带的短小基础层，不在 `fw.toml` 中重复声明。
+- 运行时 Kit 固定为 `app / anim / net / rec / ai / lua`；具体玩法、物品、地图、Boss、法术和游戏 AI 留在宿主。
+- Kit 只能直接依赖 `core`，不得横向依赖其他 Kit；同一 Kit 内的 adapter 子程序集可以依赖本 Kit 主程序集。
+- `tool` 可以依赖 `core` 和任意 Kit；运行时 Kit 不得反向依赖 `tool`。迁移期的 `FwRuntime` 兼容外观是唯一例外，只负责转发旧公开类型，不得被 `[use]` 装入新目标。
+- `app` 保存 Godot app/mode、asset、pool、UI、本地化、音频、显示和调试能力；`anim` 保存共享动作采样、朝向、motion match、Rig、IK 和骨骼外观能力。
+- `net` 保存 transport、投递、输入历史、房间、心跳和票据，不保存录像；`rec` 保存帧归档、checkpoint、恢复和 seek，不依赖网络。
+- `ai` 只保存运行时决策、导航、搜索和模型推理；训练、评测和 league 属于 `tool/train`，网络故障模拟属于 `tool/e2e`。
+- `lua` 只表示 MoonSharp 沙箱、query、command 和 ScriptGraph，不得伪装成包含加载、依赖、安全、版本与发布流程的完整 Mod 系统。
+- `[use].game` 与 `[use].host` 分别声明目标使用的 Kit；数组只能包含 Kit 短名，重复项、未知项和显式 `core` 必须失败。`app` 只投影给 game，host 选择它必须失败而不是静默忽略。
+- 启用 `[use]` 的 Godot 工程只读取 `scripts/_fw` 投影；`sync` 必须隐藏框架源脚本，避免重复 UID/class，并删除已禁用 Kit 的旧投影。
+
 ### Context
 - mode context 和 system context 都使用 `refs / config / state`。
 - `refs` 只保存依赖对象引用。
@@ -91,7 +103,7 @@
 - 联机 packet 必须校验协议版本；加入战局后的 connected packet 必须校验会话身份。
 
 ### Network
-- `Fw.Rt.Net` 只提供跨游戏的 transport、投递语义、命令 journal、命令去重、输入历史和故障模拟，不定义宿主 packet、玩家 intent 或房间规则。
+- `Fw.Rt.Net` 只提供跨游戏的 transport、投递语义、命令 journal、命令去重和输入历史，不定义宿主 packet、玩家 intent、房间规则或测试故障模拟。
 - 宿主 bridge 负责把 packet 类型映射到 channel 与投递语义；玩法 core 不直接依赖 transport 实现。
 - transport 必须通过 `INetTransport` 隔离，宿主不得泄漏 LiteNetLib、Steam 或平台 SDK 类型。
 - 一次性命令必须进入有界 journal，直到收到权威终态确认才移除；容量耗尽必须显式背压，禁止静默丢弃。
@@ -117,6 +129,7 @@
 
 ### AI
 - `Fw.Rt.AI` 只提供跨游戏的黑板、决策图、Utility、Behavior Tree、StateTree、GOAP、导航、预算和确定性执行机制，不保存宿主玩法。
+- `Fw.Rt.AI` 运行时只做决策和推理；训练数据、训练器、批量评测和 league 只能进入 `tool/train`。
 - `DecisionGraph` 是运行时只读 IR，不是策划编辑格式；可视资产应按条件、目标、行为树、状态机和 GOAP 的本来语义编写，再由 `DecisionAssets` 在启动阶段编译。
 - 行为树必须是单根、单父级的严格树；状态机以状态为节点、转换为边；Utility 编辑目标及评分，GOAP 编辑目标和动作，不得重新混成一张通用蓝图。
 - 每个权威对象必须独立保存 `DecisionSession`、随机状态和需要续算的搜索状态。
@@ -129,6 +142,7 @@
 
 ### Optional Script
 - `Fw.Rt.Script` 是可选的跨游戏 Lua 沙箱和 JSON-like 值边界，不是 AI 或决策图的必需依赖，也不保存宿主玩法。
+- 该能力由 `lua` Kit 装配；未选择 `lua` 的目标不得获得 MoonSharp 包引用。
 - 脚本事实源、函数合同、图节点语义和 FWE 编辑器定义属于宿主工程。
 - 脚本不得自动访问 CLR、文件、网络、系统时间或进程环境；只能调用宿主显式注册的只读 query。
 - 脚本 command 先收集，函数成功返回后才交给宿主校验和执行；异常或预算超限时整批 command 作废。
@@ -201,14 +215,15 @@
 ### 工具链
 - 根 `global.json` 是 .NET SDK 与 `Godot.NET.Sdk` 版本事实源。
 - 根 `Directory.Build.props` 是宿主与 DS 的 `TargetFramework` 事实源；Godot 可能在游戏 `.csproj` 中显式写回同一值，两处必须一致。
-- `fw/csharp/Directory.Build.props` 必须使用与宿主相同的 `TargetFramework`，避免宿主无法引用框架运行时。
+- `fw/Directory.Build.props` 是框架程序集的 `TargetFramework` 事实源，`fw/csharp/Directory.Build.props` 只能导入它，避免不同目录下的 Kit 漂移。
 - 框架以 Godot 支持的运行时版本为 target baseline；命令行工具可通过 `RollForward` 使用已安装的更高兼容运行时，不能反向抬高游戏程序集 target。
 - 游戏 `.csproj` 可省略 `Godot.NET.Sdk` 版本或显式写出版本；显式版本必须与 `global.json` 一致。
 - `project.godot [dotnet].project/assembly_name` 必须等于 `fw.toml [project].name`。
 - 本地和 CI 必须执行相同的 generator test、模板生成、Release/Debug 构建和 Godot headless 测试。
 
 ### 兼容
-- 框架公共合同包括 Godot 基类与 service、`FwRuntime` 公共 API、`fw.toml`、生成命令、schema 子集和生成类型；改名、删除或改变既有语义都属于兼容性变更。
+- 框架公共合同包括 Godot 基类与 service、Kit 公共 API、兼容聚合器 `FwRuntime`、`fw.toml`、生成命令、schema 子集和生成类型；改名、删除或改变既有语义都属于兼容性变更。
+- 旧工程可在一个迁移版本内继续引用 `FwRuntime` 和 `res://fw/scripts/fw`；`FwRuntime` 必须用类型转发同时保持源码与既有 DLL 的程序集限定类型解析。新工程必须使用生成的 Kit 引用和 `res://scripts/_fw/fw`；移除兼容层属于 major 变更。
 - 对外发布使用 Semantic Versioning Git tag；破坏兼容性升级 major，向后兼容能力升级 minor，只修复既有行为升级 patch。
 - 宿主工程必须通过 submodule commit 锁定精确框架版本，不跟随浮动分支运行或发布。
 - 框架升级后必须重新生成并完成 check、build、test；submodule 指针与对应生成产物必须在同一宿主变更中收束。

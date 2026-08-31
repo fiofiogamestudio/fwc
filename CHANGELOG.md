@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- 运行时拆为必带 `core` 与 `app / anim / net / rec / ai / lua` Kit，训练和网络故障模拟移入 tool；新增 `[use].game/host`、`fw sync`、目标级 C# 引用与 Godot 投影，同时用完整类型转发保留 `FwRuntime` 和旧 Godot 路径的一版兼容入口，并清理清单记录的旧投影根。
 - 新增 `FLocalization`、标准目录 provider 与 C# `LocalizedMessage/LocalizedAsset` 语义契约，支持确定性 provider 覆盖、语言回退、命名参数、复数/选择、伪本地化、文本/资源绑定和缺失诊断。
 - 新增通用整局 AI 基础设施：游戏环境/机会节点合同、策略价值模型、固定预算 Beam 与 PUCT、训练轨迹、确定性 replay buffer、可持久化线性 policy/value 训练基线和带 Wilson 区间的批量评测。
 - 新增可独立组合的纯 C# AI 模块：固定工作量预算与追踪、Utility、Behavior Tree、增量 GOAP、增量 A*、LRU 路径缓存、流场、Steering，以及本地/远程/回退 Policy 合同。

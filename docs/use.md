@@ -8,9 +8,18 @@
 - 项目名必须以字母开头，只使用字母、数字和下划线；C# namespace 会自动转换成 PascalCase。
 - `fw.toml` 只写模板列出的 section/key，路径使用工程根目录内的相对路径；未知字段、重复字段、空值或 `../` 越界路径会直接失败。
 - `new` 会生成 system/bridge/config，随后运行配置检查和整体检查；失败不会报告创建成功。
+- `fw.toml [use]` 分别配置 `game` 与 `host`。game 可选 `app / anim / net / rec / ai / lua`，host 可选 `anim / net / rec / ai / lua`；不要写 `core`，它始终自动加入。
 - `project.godot` 必须包含 `[dotnet] project/assembly_name="<project name>"`；`fw check` 会在运行前发现不一致。
 
+## Kit
+- `app` 是 Godot 应用壳与通用服务，`anim` 是动作/Rig，`net` 是联机，`rec` 是帧归档，`ai` 是运行时决策，`lua` 是可选脚本沙箱。
+- 修改 `[use]` 或更新 fw commit 后先运行 `fw/tools/sync.ps1`；Unix 使用 `bash fw/tools/sync.sh`。
+- game C# 工程导入 `csharp/_gen/_fw_game.props`；声明 `[dotnet].host` 的纯 C# 工程导入 `_fw_host.props`。
+- `scripts/_fw`、两个 `_fw_*.props` 和框架脚本根的 `.gdignore` 都由 `sync` 管理，不手改。禁用 Kit 后再次同步会清理旧投影和引用。
+- 没有 `[use]` 的旧工程继续使用带类型转发的 `FwRuntime` 与 `res://fw/scripts/fw`；迁移时一次性改为 props 与 `res://scripts/_fw/fw`，不要混用两套 Godot 路径。
+
 ## 日常命令
+- 同步 Kit：`fw/tools/sync.ps1`。
 - 生成 system：`fw/tools/gen.ps1 system`。
 - 生成 bridge：`fw/tools/gen.ps1 bridge`。
 - 生成 config：`fw/tools/gen.ps1 config`。
@@ -20,7 +29,7 @@
 - 完整构建：`fw/tools/build.ps1`。
 - 完整测试：`fw/tools/test.ps1`。
 - Unix 使用同名 `.sh` 脚本；Windows/Unix 默认 build 流程一致。
-- `system / bridge / config / config_pack` 都按批次提交；命令中途失败时保留调用前的完整产物与 manifest，不需要手工修补 `_gen`。
+- `sync / system / bridge / config / config_pack` 都按批次提交；命令中途失败时保留调用前的完整产物与 manifest，不需要手工修补 `_gen` 或 `_fw`。
 - `config_pack` 会删除已不再对应当前 config root 的旧 `.bin`，`pack/config` 不应存放手写文件。
 
 ## 修改 System

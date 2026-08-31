@@ -2,13 +2,15 @@
 
 ## 结构
 - `fw/`：可复用框架仓库，只保存运行时、生成器、模板、工具和通用文档。
+- `fw/core/cs`：必带的 `Fw.Core`；`fw/kit/<id>`：`app / anim / net / rec / ai / lua`；`fw/tool`：gen、train、e2e、FWE 和模板等开发能力。
 - `fw.toml`：宿主工程路径与 .NET 工程入口，只接受固定 section/key，所有路径必须位于工程根目录内。
+- `[use].game / host`：按目标选择 Kit，`core` 自动加入；未声明 `[use]` 时只用于旧聚合模式兼容。
 - `schema/systems.toml`：Godot system 与 C# core system 的统一事实源。
 - `schema/bridge/*.proto`：intent、view、event、packet 和公共值类型事实源。
 - `schema/config/*.proto`：配置结构事实源。
 - `data/config/*`：人工维护的配置源数据。
 - `pack/config/*`：生成的运行时配置包，不手改。
-- `scripts/_gen`、`csharp/_gen`：生成代码，不手改；宿主配置 `[gen].fwe` 时还可生成 FWE 配置结构契约。
+- `scripts/_gen`、`csharp/_gen`：生成代码，不手改；`scripts/_fw` 是启用 Kit 的 Godot 投影，同样不手改。
 - `Directory.Build.props`：宿主与 DS 的 target framework 事实源；当前以 Godot 4.6 使用的 `net8.0` 为兼容基线，并允许工具在仅安装较新运行时时按 `Major` 向前运行。
 - `global.json`：固定构建用 .NET SDK 和 `Godot.NET.Sdk`；游戏项目中 Godot 写回的 SDK/target 必须与两项配置一致。
 - `scenes/app`、`scenes/env`：应用入口和 mode 环境场景。
@@ -19,10 +21,11 @@
 ## Compatibility
 - Godot：`4.6.2 .NET`，由模板、`global.json` 与 CI 共同固定。
 - 构建 SDK：`.NET SDK 10.0.201`；只负责还原和编译，不改变游戏程序集的 API 基线。
-- Target framework：`net8.0`；游戏、DS 与 `FwRuntime` 保持一致，命令行工具在缺少 8 运行时时允许 `Major` 向前运行。
+- Target framework：`net8.0`；游戏、DS、Kit 与 `FwRuntime` 保持一致，命令行工具在缺少 8 运行时时允许 `Major` 向前运行。
 - 自动验证平台：Windows 与 Linux；macOS 在成为发布目标前再加入 CI。
 - Git tag 提供人类可读的 SemVer 版本，宿主 submodule commit 提供实际的精确版本锁定；二者职责不同。
-- 公共兼容边界覆盖 Godot runtime、`FwRuntime`、配置入口、生成命令、schema 子集和生成合同。内部生成器类型与实现文件不属于宿主 API。
+- 公共兼容边界覆盖 Godot runtime、Kit、`FwRuntime` 兼容聚合器、配置入口、生成命令、schema 子集和生成合同。内部生成器类型与实现文件不属于宿主 API。
+- 新工程引用 `csharp/_gen/_fw_game.props`；可选 DS/host 工程引用 `_fw_host.props`。旧 `FwRuntime` 用完整类型转发保持既有程序集限定类型可解析，并与旧 Godot 路径共同保留一个迁移版本。
 - `_fwgen_manifest.json` 负责发现生成器、输入或产物漂移，但不代替版本号；宿主升级必须同时审阅 submodule 指针与生成差异。
 
 ## Runtime
@@ -71,7 +74,7 @@
 - 固定离散动作空间可使用 `DenseActorCriticModel`：单隐层 actor-critic 同时输出动作概率与有界价值，推理始终应用合法动作 mask；`DenseActorCriticCheckpoint` 固定版本、schema id、维度和有限权重，不保存宿主玩法语义。
 - `Search` 提供可暂停的确定性 `BeamSearch` 和 PUCT。Beam 只接受单人或合作型确定性规划；PUCT 支持完全信息的顺序玩家与显式 chance 节点，按稳定动作顺序打破平局。不完全信息必须先由宿主做确定化或实现信息集算法，框架不会把完全信息搜索伪装成公平策略。
 - 搜索预算分别按展开节点数和模拟次数计量；终局 `Payoffs` 是完整局面价值，`Transition.Rewards` 留给训练轨迹，搜索不会把两者重复累计。
-- `Training` 提供策略目标、策略价值样本、完整/截断轨迹、确定性定容 replay buffer，以及对线性基线执行交叉熵与价值回归的固定顺序小批量训练器；`Evaluation` 分开统计成功、失败、平局、截断、平均收益和 Wilson 成功率区间。
+- `tool/train` 提供策略目标、策略价值样本、完整/截断轨迹、确定性定容 replay buffer、训练器、批量评测和 league；它依赖 `Fw.AI`，但不会被 `[use].game/host` 带入运行时。
 - `DensePpoTrainer` 支持带动作 mask 的行为克隆和 PPO clipped surrogate、价值回归、熵正则、梯度裁剪与 Adam；近似 KL 使用非负形式 `ratio - 1 - log(ratio)`，宿主可配置目标 KL 在完整 epoch 后提前停止，`0` 表示关闭。宿主负责生成 advantage/value target、冻结 rollout 旧概率并执行晋级门槛。`ZeroSumLeague` 保存双向零和对局收益，用确定性元策略采样历史对手。
 - `Utility` 按稳定注册顺序评分，支持权重、确定性噪声与切换阈值；分数相同保持先注册项。
 - `Behavior` 使用 `Success / Failure / Running / Suspended`，只读树定义与 `BehaviorSession` 分离，同一棵树可供多个会话使用；响应式节点抢占分支时会递归清理旧分支游标。
@@ -88,7 +91,7 @@
 - AI 模块不读取宿主 context、不直接修改世界、不生成具体游戏命令，也不要求游戏同时使用全部算法；状态/动作编码、奖励、胜负、课程和训练参数始终属于宿主游戏。
 
 ## Optional Script
-- `Fw.Rt.Script` 是独立可选能力；可用于确实适合文本脚本的玩法扩展，但可视决策图无需加载 Lua。
+- `lua` Kit 提供 `Fw.Rt.Script` 独立可选能力；可用于确实适合文本脚本的玩法扩展，但可视决策图无需加载 Lua，未选 Kit 的目标不引用 MoonSharp。
 - `Fw.Rt.Script.ScriptRuntime` 使用纯 C# Lua 解释器，并只启用基础表、字符串、数学和错误处理模块。
 - `os / io / package / require / load / loadfile / dofile / debug / collectgarbage` 与 Lua 随机函数不可用；宿主不会注册 CLR userdata。
 - `ScriptRuntime.Load(id, source)` 要求模块返回函数表；`RequireFunction` 用于启动阶段验证公开入口。
@@ -181,11 +184,13 @@
 - `RoomDirectoryClient` 仅允许 loopback 使用 HTTP；非本机目录必须使用 HTTPS。注册密钥、心跳 token 和 admission secret 都不得进入客户端或源码配置。
 
 ## 生成
+- `fwgen sync` 读取 `[use]`，为 game/host 生成只含 `core + 所选 Kit` 的 props；game 端同时把启用的 app/anim GDScript 投影到 `scripts/_fw`，重写内部 `res://` 路径，并按上一版清单删除已禁用 Kit 或旧投影根中的受控输出。
+- 启用 `[use]` 时，`sync` 在被 Git 忽略的框架脚本根写入 `.gdignore`，让 Godot 只扫描投影；旧工程没有 `[use]` 时不启用该隔离。
 - `SystemGen`、`BridgeGen`、`ConfigGen` 只编排流程；schema 层先解析并校验完整语义模型，Godot/C# renderer 只消费同一模型，不再各自推断 root、enum 或字段集合。
 - `BridgeModel` 固定一次解析得到 intent/action/event/packet root、enum、view 和字段集合；`ConfigModel` 固定一次解析得到 message、root、字段集合与 schema hash。校验器和 renderer 因此不会使用两套命名或分类规则。
 - 所有输出使用确定性排序；重复生成内容保持一致。
 - 所有文本产物统一使用 LF、移除行尾空白，并且文件末尾恰好保留一个换行，避免编辑器规范化造成清单误报。
-- `system / bridge / config / config_pack` 先把本次写入和删除全部放入内存批次，再准备同目录临时文件并提交；进程内任一步失败都会逆序恢复旧文件，新建文件会删除。
+- `sync / system / bridge / config / config_pack` 先把本次写入和删除全部放入内存批次，再准备同目录临时文件并提交；进程内任一步失败都会逆序恢复旧文件，新建文件会删除。
 - 生成清单与对应代码在同一批次提交；清单 hash 直接基于待提交字节计算，不会提前认可磁盘旧产物。
 - 内容未变化的文件不会重写；`config_pack` 同批删除不再对应当前 config root 的旧 `.bin`。
 - `csharp/_gen/_fwgen_manifest.json` 记录生成器、输入和完整输出集合的 hash，包括启用的 FWE 契约；`fw check` 拒绝缺失、过期、集合异常或被手改的生成产物。
@@ -194,11 +199,11 @@
 
 ## 测试
 - `FwGenTests` 按 `proto / system / bridge / config / runtime / api` 分组，覆盖合法/非法 proto、import/package/oneof、proto 零值、生成标识符冲突、system phase/回滚/fault 清理、生成锁、批次新增/替换/删除回滚、生成清单、config pack 和 wire frame，包括 import 穿越/歧义、数字溢出、格式头、版本、校验和、长度边界与逐字节变异。
-- `tools/test.ps1`、`tools/test.sh` 会构建 runtime/generator，运行 `FwGenTests` 与 `FwRuntime.Verify`，并在全新临时目录验证 `new -> check -> config_pack -> build`。
+- `tools/test.ps1`、`tools/test.sh` 会构建 runtime/generator，运行 `FwGenTests` 与 `FwRuntime.Verify`，并在全新临时目录验证 `new -> sync -> check -> config_pack -> build`。
 - 测试会比较规范源与模板镜像，并验证重复生成、重复打包的内容完全一致。
 - 本地存在 Godot .NET 时继续执行 headless editor 扫描、编辑器改写后的二次 check/build、runtime 故障注入、通用服务探针和主场景启动；可用 `GODOT_BIN` 显式指定可执行文件。
 - `.github/workflows/ci.yml` 使用只读仓库权限，在 Windows 与 Linux 安装固定 Godot .NET，并执行同一完整测试链；同一引用的新任务会取消旧任务，单个 job 最长运行 30 分钟。
-- `fw/csharp/Directory.Build.props` 统一 FwGen、FwRuntime 与测试工程的 target framework，并把 C# 警告视为错误；默认模板对宿主使用同一规则。
+- `fw/Directory.Build.props` 统一 core、Kit、tool、FwRuntime 与测试工程的 target framework，并把 C# 警告视为错误；`fw/csharp/Directory.Build.props` 只负责向旧目录导入该事实源。
 - C# snapshot 冻结 `Fw.Rt.*` 的公开类型、继承关系、构造、字段、属性访问器、事件、方法和运算符；Godot snapshot 自动扫描 `fw/scripts/fw` 下全部 `class_name`，冻结直接基类、方法签名与默认值、signal、属性和常量值。
 - `fw/tests/runtime_test.gd` 覆盖 binding 所有权、pool 状态互斥、ViewStore 缓存、UI wrapper/form logic、失效 UI stack、GDScript system 与 mode 回滚；`fw/tools/verify_runtime.gd` 覆盖 event/FSM/system、asset 并发与 provider 生命周期、pool/log/audio/display/debug。普通 Godot `ERROR` 默认会让测试失败，仅逐条列出的故障注入可放行。
 
