@@ -4,6 +4,8 @@ namespace Fw.Rt.AI.Core;
 
 public sealed class DecisionScope
 {
+    internal HashSet<int> ExpressionPath { get; } = [];
+
     public DecisionScope(
         int tick,
         DecisionBudget budget,

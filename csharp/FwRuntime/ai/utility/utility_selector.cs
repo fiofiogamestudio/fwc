@@ -17,7 +17,8 @@ public sealed record UtilityResult<TChoice>(
     string Id,
     TChoice? Choice,
     double Score,
-    IReadOnlyList<UtilityScore> Scores
+    IReadOnlyList<UtilityScore> Scores,
+    bool Complete = true
 );
 
 public sealed class UtilitySelector<TContext, TChoice>
@@ -79,7 +80,14 @@ public sealed class UtilitySelector<TContext, TChoice>
         {
             if (!scope.Budget.TrySpend())
             {
-                break;
+                return new UtilityResult<TChoice>(
+                    false,
+                    "",
+                    default,
+                    0.0,
+                    scores,
+                    false
+                );
             }
             var score = option.Score(context) * option.Weight;
             if (option.Noise > 0.0)
