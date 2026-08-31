@@ -46,12 +46,19 @@ tar \
   -C "${FW_ROOT}" -cf - . | tar -C "${TEST_ROOT}/fw" -xf -
 GENERATOR="${FW_ROOT}/csharp/FwGen/FwGen.csproj"
 dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" craft fw-new --name fw_audit
+printf '%s\n' \
+  '<Project Sdk="Microsoft.NET.Sdk">' \
+  '  <PropertyGroup>' \
+  '    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>' \
+  '  </PropertyGroup>' \
+  '  <Import Project="csharp/_gen/_fw_host.props" />' \
+  '</Project>' > "${TEST_ROOT}/host_audit.csproj"
 dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" check
-generated_before="$(cd "${TEST_ROOT}" && find scripts/_gen csharp/_gen -type f -print0 | sort -z | xargs -0 sha256sum)"
-for command in system bridge config; do
+generated_before="$(cd "${TEST_ROOT}" && find scripts/_gen scripts/_fw csharp/_gen fw/scripts/.gdignore -type f -print0 | sort -z | xargs -0 sha256sum)"
+for command in sync system bridge config; do
   dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" "${command}"
 done
-generated_after="$(cd "${TEST_ROOT}" && find scripts/_gen csharp/_gen -type f -print0 | sort -z | xargs -0 sha256sum)"
+generated_after="$(cd "${TEST_ROOT}" && find scripts/_gen scripts/_fw csharp/_gen fw/scripts/.gdignore -type f -print0 | sort -z | xargs -0 sha256sum)"
 [[ "${generated_before}" == "${generated_after}" ]] || {
   echo "repeated generation is not deterministic" >&2
   exit 1
@@ -63,6 +70,13 @@ if dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" check
 fi
 dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" system
 dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" check
+printf '\n# tampered\n' >> "${TEST_ROOT}/scripts/_fw/fw/rt/system/_app_root.gd"
+if dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" check; then
+  echo "fw check accepted a modified kit projection" >&2
+  exit 1
+fi
+dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" sync
+dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" check
 dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" config_pack
 pack_before="$(cd "${TEST_ROOT}" && find pack/config -type f -print0 | sort -z | xargs -0 sha256sum)"
 dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" config_pack
@@ -72,6 +86,7 @@ pack_after="$(cd "${TEST_ROOT}" && find pack/config -type f -print0 | sort -z | 
   exit 1
 }
 dotnet build "${TEST_ROOT}/fw_audit.csproj" -c Release
+dotnet build "${TEST_ROOT}/host_audit.csproj" -c Release
 
 GODOT_DOTNET=""
 godot_candidates=()
@@ -99,8 +114,14 @@ if [[ -n "${GODOT_DOTNET}" && -x "${GODOT_DOTNET}" ]]; then
   timeout "${GODOT_EDITOR_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --editor --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_editor.log" --quit
   dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" check
   dotnet build "${TEST_ROOT}/fw_audit.csproj" -c Debug
-  timeout "${GODOT_RUN_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_runtime.log" --script "res://fw/tests/runtime_test.gd"
-  timeout "${GODOT_RUN_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_services.log" --script "res://fw/tools/verify_runtime.gd"
+  mkdir -p "${TEST_ROOT}/scripts/_fw_probe"
+  sed 's#res://fw/scripts/fw#res://scripts/_fw/fw#g' "${TEST_ROOT}/fw/tests/runtime_test.gd" > "${TEST_ROOT}/scripts/_fw_probe/_runtime_test.gd"
+  sed \
+    -e 's#res://fw/scripts/fw#res://scripts/_fw/fw#g' \
+    -e 's#res:fw/scripts/fw#res:scripts/_fw/fw#g' \
+    "${TEST_ROOT}/fw/tools/verify_runtime.gd" > "${TEST_ROOT}/scripts/_fw_probe/_verify_runtime.gd"
+  timeout "${GODOT_RUN_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_runtime.log" --script "res://scripts/_fw_probe/_runtime_test.gd"
+  timeout "${GODOT_RUN_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_services.log" --script "res://scripts/_fw_probe/_verify_runtime.gd"
   timeout "${GODOT_RUN_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_game.log" --quit-after 3
   test -f "${TEST_ROOT}/.godot/global_script_class_cache.cfg"
   ! grep -Eiq 'SCRIPT ERROR|Parse Error|Compile Error|Can.t run project|^ERROR:' \

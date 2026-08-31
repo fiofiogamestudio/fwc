@@ -8,6 +8,7 @@ static class TestRunner
         [
             .. ProtoTests.Cases,
             .. SystemTests.Cases,
+            .. ModuleTests.Cases,
             .. BridgeTests.Cases,
             .. ConfigTests.Cases,
             .. RuntimeTests.Cases,

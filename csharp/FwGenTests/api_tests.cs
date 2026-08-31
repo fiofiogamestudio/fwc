@@ -10,6 +10,19 @@ using static TestKit;
 
 static class ApiTests
 {
+    private static readonly string[] RuntimeAssemblies =
+    [
+        "Fw.Core",
+        "Fw.Anim",
+        "Fw.Net",
+        "Fw.Net.Lite",
+        "Fw.Rec",
+        "Fw.AI",
+        "Fw.Lua",
+        "Fw.AI.Train",
+        "Fw.Test",
+    ];
+
     internal static TestCase[] Cases =>
     [
         new("C# runtime public API contract", TestRuntimeApi),
@@ -211,7 +224,9 @@ static class ApiTests
     private static string RenderPublicApi()
     {
         var text = new StringBuilder();
-        var types = typeof(WireFrame).Assembly.GetExportedTypes()
+        var types = RuntimeAssemblies
+            .Select(name => Assembly.Load(new AssemblyName(name)))
+            .SelectMany(assembly => assembly.GetExportedTypes())
             .Where(type => type.Namespace?.StartsWith("Fw.Rt.", StringComparison.Ordinal) == true)
             .OrderBy(TypeName, StringComparer.Ordinal);
         foreach (var type in types)

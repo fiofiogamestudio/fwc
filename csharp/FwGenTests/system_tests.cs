@@ -12,6 +12,9 @@ static class SystemTests
         new("project name validation", TestProjectNameValidation),
         new("fw config rejects unknown keys", TestUnknownFwConfigKey),
         new("fw config contains paths", TestFwConfigPathContainment),
+        new("fw config validates kit use", TestFwConfigKitUse),
+        new("fw check requires a real kit import", TestProjectImport),
+        new("fw sync selects kit outputs", TestKitSync),
         new("manifest requires complete outputs", TestManifestOutputSet),
         new("generation batch normalizes text", TestGenerationBatchText),
         new("generation batch rejects conflicting targets", TestGenerationBatchTargets),
@@ -171,6 +174,178 @@ static class SystemTests
         });
     }
 
+    private static void TestFwConfigKitUse()
+    {
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", """
+                [use]
+                game = ["app", "anim", "net"]
+                host = []
+                """);
+            var config = FwConfig.Load(root);
+            True(config.HasUseSection(), "use section");
+            Equal("app,anim,net", string.Join(',', config.GameKits()), "game kits");
+            Equal(0, config.HostKits().Count, "empty host kits");
+        });
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", "[use]\ngame = [\"core\"]\nhost = []\n");
+            Throws(() => FwConfig.Load(root), "core is automatic");
+        });
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", "[use]\ngame = [\"app\", \"app\"]\nhost = []\n");
+            Throws(() => FwConfig.Load(root), "repeats kit");
+        });
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", "[use]\ngame = [\"unknown\"]\n");
+            Throws(() => FwConfig.Load(root), "missing [use].host");
+        });
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", "[use]\ngame = [\"unknown\"]\nhost = []\n");
+            Throws(() => FwConfig.Load(root), "unknown kit");
+        });
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", "[use]\ngame = []\nhost = [\"app\"]\n");
+            Throws(() => FwConfig.Load(root), "app is projected only for game");
+        });
+    }
+
+    private static void TestProjectImport()
+    {
+        WithTempDir(root =>
+        {
+            var project = Write(root, "game.csproj", "<Project><!-- csharp/_gen/_fw_game.props --></Project>\n");
+            var expected = Path.Combine(root, "csharp/_gen/_fw_game.props");
+            True(!FwCheck.ImportsProject(project, expected), "comment is not an import");
+
+            Write(root, "game.csproj", "<Project><Import Project=\"csharp/_gen/_fw_game.props\" /></Project>\n");
+            True(FwCheck.ImportsProject(project, expected), "relative import resolves");
+
+            Write(root, "game.csproj", "<Project><Import Project=\"csharp/_gen/_fw_game.props\" Condition=\"false\" /></Project>\n");
+            True(!FwCheck.ImportsProject(project, expected), "disabled import is rejected");
+
+            Write(
+                root,
+                "game.csproj",
+                "<Project><Import Project=\"$(MSBuildProjectDirectory)/csharp/_gen/_fw_game.props\" /></Project>\n"
+            );
+            True(FwCheck.ImportsProject(project, expected), "project directory import resolves");
+        });
+    }
+
+    private static void TestKitSync()
+    {
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", """
+                [gen]
+                csharp = "csharp/_gen"
+                [script]
+                gdscript = "scripts"
+                [dotnet]
+                fwgen = "fw/csharp/FwGen/FwGen.csproj"
+                [use]
+                game = ["app", "anim"]
+                host = ["net", "rec"]
+                """);
+            Write(root, "fw/Directory.Build.props", "<Project />\n");
+            Write(root, "fw/csharp/Directory.Build.props", "<Project />\n");
+            Write(root, "fw/csharp/FwGen/FwGen.csproj", "<Project />\n");
+            Write(root, "fw/csharp/FwGen/source.cs", "class Source {}\n");
+            foreach (var project in new[]
+            {
+                "fw/core/cs/Fw.Core.csproj",
+                "fw/kit/anim/cs/Fw.Anim.csproj",
+                "fw/kit/net/cs/Fw.Net.csproj",
+                "fw/kit/net/cs/lite/Fw.Net.Lite.csproj",
+                "fw/kit/rec/cs/Fw.Rec.csproj",
+            })
+            {
+                Write(root, project, "<Project />\n");
+            }
+            Write(root, "fw/scripts/fw/rt/system/_app_root.gd", "extends Node\n");
+            Write(
+                root,
+                "fw/scripts/fw/vu/ui/_form.gd",
+                "extends \"res://fw/scripts/fw/rt/system/_app_root.gd\"\n"
+            );
+            Write(root, "fw/scripts/fw/vu/animation/_rig.gd", "extends Node3D\n");
+
+            var config = FwConfig.Load(root);
+            KitSync.Run(root, config);
+            True(File.Exists(Path.Combine(root, "fw/scripts/.gdignore")), "source scripts ignored");
+
+            var gameProps = File.ReadAllText(config.GameKitPropsPath(root));
+            var hostProps = File.ReadAllText(config.HostKitPropsPath(root));
+            True(gameProps.Contains("Fw.Core.csproj", StringComparison.Ordinal), "game core ref");
+            True(gameProps.Contains("Fw.Anim.csproj", StringComparison.Ordinal), "game anim ref");
+            True(!gameProps.Contains("Fw.Net.csproj", StringComparison.Ordinal), "game excludes net");
+            True(hostProps.Contains("Fw.Net.Lite.csproj", StringComparison.Ordinal), "host net ref");
+            True(hostProps.Contains("Fw.Rec.csproj", StringComparison.Ordinal), "host rec ref");
+            True(!hostProps.Contains("Fw.Anim.csproj", StringComparison.Ordinal), "host excludes anim");
+
+            var projectedForm = Path.Combine(config.GodotFwDir(root), "fw/vu/ui/_form.gd");
+            True(File.Exists(projectedForm), "app projection");
+            True(
+                File.ReadAllText(projectedForm).Contains("res://scripts/_fw/fw/rt/system/_app_root.gd", StringComparison.Ordinal),
+                "projected resource path"
+            );
+            True(
+                File.Exists(Path.Combine(config.GodotFwDir(root), "fw/vu/animation/_rig.gd")),
+                "anim projection"
+            );
+
+            Write(root, "fw.toml", """
+                [gen]
+                csharp = "csharp/_gen"
+                [script]
+                gdscript = "client_scripts"
+                [dotnet]
+                fwgen = "fw/csharp/FwGen/FwGen.csproj"
+                [use]
+                game = ["anim"]
+                host = []
+                """);
+            config = FwConfig.Load(root);
+            KitSync.Run(root, config);
+            True(!File.Exists(projectedForm), "disabled app projection removed");
+            var movedProjection = Path.Combine(config.GodotFwDir(root), "fw/vu/animation/_rig.gd");
+            True(
+                File.Exists(movedProjection),
+                "enabled anim projection kept"
+            );
+            True(
+                !File.Exists(Path.Combine(root, "scripts/_fw/fw/vu/animation/_rig.gd")),
+                "old projection root removed"
+            );
+            True(
+                File.ReadAllText(config.GameKitPropsPath(root)).Contains("Fw.Anim.csproj", StringComparison.Ordinal),
+                "updated game refs"
+            );
+
+            Write(root, "fw.toml", """
+                [gen]
+                csharp = "csharp/_gen"
+                [script]
+                gdscript = "scripts"
+                [dotnet]
+                fwgen = "fw/csharp/FwGen/FwGen.csproj"
+                """);
+            config = FwConfig.Load(root);
+            KitSync.Run(root, config);
+            True(!Directory.GetFiles(config.GodotFwDir(root), "*", SearchOption.AllDirectories).Any(), "compat projection removed");
+            True(!File.Exists(config.GameKitPropsPath(root)), "compat game props removed");
+            True(!File.Exists(config.HostKitPropsPath(root)), "compat host props removed");
+            True(!File.Exists(Path.Combine(root, "fw/scripts/.gdignore")), "compat source scripts visible");
+            True(!File.Exists(movedProjection), "compat removes recorded projection root");
+        });
+    }
+
     private static void TestManifestOutputSet()
     {
         WithTempDir(root =>
@@ -200,6 +375,7 @@ static class SystemTests
             Write(root, "fw/csharp/FwGen/source.cs", "class Source {}\n");
             Write(root, "fw/csharp/FwGen/FwGen.csproj", "<Project />\n");
             Write(root, "fw/csharp/Directory.Build.props", "<Project />\n");
+            Write(root, "fw/Directory.Build.props", "<Project />\n");
             Write(root, "schema/systems.toml", "systems\n");
             Write(root, "schema/bridge/value.proto", "syntax = \"proto3\";\n");
             Write(root, "schema/config/game.proto", "syntax = \"proto3\";\n");

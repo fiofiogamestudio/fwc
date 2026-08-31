@@ -210,14 +210,30 @@ try {
     $Generator = Join-Path $FwRoot "csharp\FwGen\FwGen.csproj"
     & dotnet run --project $Generator -c Release -- --root $TestRoot craft fw-new --name fw_audit
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $HostProject = Join-Path $TestRoot "host_audit.csproj"
+    [IO.File]::WriteAllText(
+        $HostProject,
+        "<Project Sdk=`"Microsoft.NET.Sdk`">`n  <PropertyGroup>`n    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>`n  </PropertyGroup>`n  <Import Project=`"csharp/_gen/_fw_host.props`" />`n</Project>`n",
+        [Text.UTF8Encoding]::new($false)
+    )
     & dotnet run --project $Generator -c Release -- --root $TestRoot check
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    $GeneratedBefore = Get-TreeSnapshot -Root $TestRoot -RelativeRoots @("scripts\_gen", "csharp\_gen")
-    foreach ($Command in @("system", "bridge", "config")) {
+    $GeneratedBefore = Get-TreeSnapshot -Root $TestRoot -RelativeRoots @(
+        "scripts\_gen",
+        "scripts\_fw",
+        "csharp\_gen",
+        "fw\scripts\.gdignore"
+    )
+    foreach ($Command in @("sync", "system", "bridge", "config")) {
         & dotnet run --project $Generator -c Release -- --root $TestRoot $Command
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     }
-    $GeneratedAfter = Get-TreeSnapshot -Root $TestRoot -RelativeRoots @("scripts\_gen", "csharp\_gen")
+    $GeneratedAfter = Get-TreeSnapshot -Root $TestRoot -RelativeRoots @(
+        "scripts\_gen",
+        "scripts\_fw",
+        "csharp\_gen",
+        "fw\scripts\.gdignore"
+    )
     if ($GeneratedBefore -ne $GeneratedAfter) {
         throw "repeated generation is not deterministic."
     }
@@ -225,6 +241,13 @@ try {
     & dotnet run --project $Generator -c Release -- --root $TestRoot check
     if ($LASTEXITCODE -eq 0) { throw "fw check accepted a modified generated file." }
     & dotnet run --project $Generator -c Release -- --root $TestRoot system
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & dotnet run --project $Generator -c Release -- --root $TestRoot check
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Add-Content -LiteralPath (Join-Path $TestRoot "scripts\_fw\fw\rt\system\_app_root.gd") -Value "# tampered"
+    & dotnet run --project $Generator -c Release -- --root $TestRoot check
+    if ($LASTEXITCODE -eq 0) { throw "fw check accepted a modified kit projection." }
+    & dotnet run --project $Generator -c Release -- --root $TestRoot sync
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & dotnet run --project $Generator -c Release -- --root $TestRoot check
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -238,6 +261,8 @@ try {
         throw "repeated config packing is not deterministic."
     }
     & dotnet build (Join-Path $TestRoot "fw_audit.csproj") -c Release
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & dotnet build $HostProject -c Release
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     if (-not $SkipGodot) {
@@ -260,17 +285,38 @@ try {
             if (-not (Test-Path -LiteralPath $ClassCache)) {
                 throw "Godot headless check did not create the script class cache."
             }
+            $ProbeDir = Join-Path $TestRoot "scripts\_fw_probe"
+            New-Item -ItemType Directory -Path $ProbeDir -Force | Out-Null
+            $RuntimeProbe = Join-Path $ProbeDir "_runtime_test.gd"
+            $ServicesProbe = Join-Path $ProbeDir "_verify_runtime.gd"
+            $Utf8NoBom = [Text.UTF8Encoding]::new($false)
+            [IO.File]::WriteAllText(
+                $RuntimeProbe,
+                [IO.File]::ReadAllText((Join-Path $TestRoot "fw\tests\runtime_test.gd"), [Text.Encoding]::UTF8).Replace(
+                    "res://fw/scripts/fw",
+                    "res://scripts/_fw/fw"
+                ),
+                $Utf8NoBom
+            )
+            [IO.File]::WriteAllText(
+                $ServicesProbe,
+                [IO.File]::ReadAllText((Join-Path $TestRoot "fw\tools\verify_runtime.gd"), [Text.Encoding]::UTF8).Replace(
+                    "res://fw/scripts/fw",
+                    "res://scripts/_fw/fw"
+                ).Replace("res:fw/scripts/fw", "res:scripts/_fw/fw"),
+                $Utf8NoBom
+            )
             $RuntimeLog = Join-Path $TestRoot "godot_runtime.log"
             Invoke-Godot `
                 -Executable $Godot `
-                -Arguments @("--headless", "--path", $TestRoot, "--log-file", $RuntimeLog, "--script", "res://fw/tests/runtime_test.gd") `
+                -Arguments @("--headless", "--path", $TestRoot, "--log-file", $RuntimeLog, "--script", "res://scripts/_fw_probe/_runtime_test.gd") `
                 -Label "Godot runtime check" `
                 -TimeoutSeconds $GodotRunTimeoutSeconds
             Assert-GodotLog -Path $RuntimeLog -Label "Godot runtime check" -AllowFaultInjection
             $ServicesLog = Join-Path $TestRoot "godot_services.log"
             Invoke-Godot `
                 -Executable $Godot `
-                -Arguments @("--headless", "--path", $TestRoot, "--log-file", $ServicesLog, "--script", "res://fw/tools/verify_runtime.gd") `
+                -Arguments @("--headless", "--path", $TestRoot, "--log-file", $ServicesLog, "--script", "res://scripts/_fw_probe/_verify_runtime.gd") `
                 -Label "Godot services check" `
                 -TimeoutSeconds $GodotRunTimeoutSeconds
             Assert-GodotLog -Path $ServicesLog -Label "Godot services check"
