@@ -3,17 +3,22 @@ using Fw.Rt.AI.Core;
 using Fw.Rt.AI.Environment;
 using Fw.Rt.AI.Evaluation;
 using Fw.Rt.AI.Model;
+using Fw.Rt.AI.Graph;
 using Fw.Rt.AI.Nav;
 using Fw.Rt.AI.Plan;
 using Fw.Rt.AI.Policy;
 using Fw.Rt.AI.Search;
 using Fw.Rt.AI.Training;
 using Fw.Rt.AI.Utility;
+using Fw.Rt.Animation;
 using Fw.Rt.Events;
 using Fw.Rt.Logging;
 using Fw.Rt.Localization;
+using Fw.Rt.Net;
 using Fw.Rt.Randomness;
+using Fw.Rt.Script;
 using Fw.Rt.State;
+using System.Numerics;
 using Fw.Rt.Systems;
 
 VerifySystemRuntime();
@@ -21,20 +26,336 @@ VerifyEventBus();
 VerifyStateMachine();
 VerifyDeterministicRandom();
 VerifyLogBuffer();
+VerifyProceduralAction();
 VerifyLocalizationContracts();
 VerifyDecisionCore();
 VerifyUtility();
 VerifyBehavior();
 VerifyPlan();
+VerifyDecisionGraph();
+VerifyDecisionAssets();
 VerifyNavigation();
 VerifyPolicy();
 VerifyGameEnvironment();
 VerifyBeamSearch();
 VerifyPuctSearch();
 VerifyTrainingAndEvaluation();
+VerifyScript();
+VerifyNet();
 
-Console.WriteLine("Verified FwRuntime systems, events, state, random, logging, localization, and AI modules.");
+Console.WriteLine("Verified FwRuntime systems, events, state, random, logging, animation, localization, AI, script, and network modules.");
 return;
+
+static void VerifyProceduralAction()
+{
+    var keys = new[]
+    {
+        new ProceduralPoseKey(
+            0.0f,
+            Vector3.Zero,
+            Vector3.Zero,
+            Vector3.One,
+            ProceduralEasing.Linear
+        ),
+        new ProceduralPoseKey(
+            4.0f,
+            new Vector3(0.0f, 0.0f, 0.48f),
+            new Vector3(0.0f, 40.0f, 0.0f),
+            Vector3.One,
+            ProceduralEasing.EaseInCubic
+        ),
+    };
+    ProceduralPose midpoint = ProceduralActionSampler.Sample(keys, 2.0f);
+    Near(0.06, midpoint.Position.Z, 0.000001, "procedural action position easing");
+    Vector3 midpointForward = ProceduralActionSampler.RotateLocal(
+        -Vector3.UnitZ,
+        midpoint.Rotation
+    );
+    Near(-0.087156, midpointForward.X, 0.000001, "procedural action rotation easing x");
+    Near(-0.996195, midpointForward.Z, 0.000001, "procedural action rotation easing z");
+    Equal(
+        4,
+        ProceduralActionSampler.RequiredSubsamples(
+            ProceduralActionSampler.Sample(keys, 0.0f),
+            ProceduralActionSampler.Sample(keys, 4.0f)
+        ),
+        "procedural action bounded adaptive sampling"
+    );
+    Equal(
+        ProceduralPose.Identity,
+        ProceduralActionSampler.Sample([], 3.0f),
+        "procedural action empty track identity"
+    );
+    Vector3 rotatedForward = ProceduralActionSampler.RotateLocalYxz(
+        -Vector3.UnitZ,
+        new Vector3(30.0f, 40.0f, 20.0f)
+    );
+    Near(-0.556670, rotatedForward.X, 0.000001, "procedural YXZ forward x");
+    Near(0.5, rotatedForward.Y, 0.000001, "procedural YXZ forward y");
+    Near(-0.663414, rotatedForward.Z, 0.000001, "procedural YXZ forward z");
+
+    var wrappedKeys = new[]
+    {
+        new ProceduralPoseKey(0.0f, Vector3.Zero, new Vector3(0.0f, 170.0f, 0.0f), Vector3.One),
+        new ProceduralPoseKey(2.0f, Vector3.Zero, new Vector3(0.0f, -170.0f, 0.0f), Vector3.One),
+    };
+    Vector3 wrappedForward = ProceduralActionSampler.RotateLocal(
+        -Vector3.UnitZ,
+        ProceduralActionSampler.Sample(wrappedKeys, 1.0f).Rotation
+    );
+    Near(0.0, wrappedForward.X, 0.000001, "procedural quaternion shortest path x");
+    Near(1.0, wrappedForward.Z, 0.000001, "procedural quaternion shortest path z");
+}
+
+static void VerifyNet()
+{
+    var journal = new NetCommandJournal(3);
+    True(journal.TryAppend(1, [1], 10, 1000, out NetCommand? first), "network command append first");
+    True(journal.TryAppend(2, [2], 20, 1000, out NetCommand? second), "network command append second");
+    True(journal.TryAppend(3, [3], 30, 1000, out NetCommand? third), "network command append third");
+    True(first != null && second != null && third != null, "network command values");
+    True(journal.IsStalled, "network command backpressure");
+    True(!journal.TryAppend(4, [4], 40, 1000, out _), "network command rejects overflow");
+    Equal(2, journal.CompleteThrough(second!.Id), "network command cumulative completion");
+    True(journal.TryPeek(out NetCommand? pending) && pending?.Id == third!.Id, "network command ordered pending");
+
+    var ledger = new NetCommandLedger(2);
+    NetCommandReceipt receipt = ledger.Commit(first!.Id, NetCommandStatus.Applied, 7);
+    True(ReferenceEquals(receipt, ledger.Commit(first.Id, NetCommandStatus.Rejected, 8)), "network command dedupe");
+    Equal(NetCommandStatus.Applied, receipt.Status, "network command first terminal result wins");
+
+    var history = new NetInputHistory<string>(3);
+    history.Capture(uint.MaxValue, "before-wrap");
+    history.Capture(0, "after-wrap");
+    history.Capture(0, "replacement");
+    history.Capture(uint.MaxValue, "stale");
+    IReadOnlyList<NetInputFrame<string>> frames = history.NewestFirst(3);
+    Equal(2, frames.Count, "network input history count");
+    Equal("replacement", frames[0].State, "network input history latest");
+
+    var duplicated = new NetFaultSimulator<int>(new NetFaultOptions
+    {
+        Duplicate = 1.0,
+        Seed = 7,
+    });
+    duplicated.Enqueue(42, 0);
+    Equal(2, duplicated.Receive(0).Count, "network fault duplication");
+    var dropped = new NetFaultSimulator<int>(new NetFaultOptions
+    {
+        Loss = 1.0,
+        Seed = 7,
+    });
+    dropped.Enqueue(42, 0);
+    Equal(0, dropped.Receive(0).Count, "network fault loss");
+
+    VerifyReliableCommandsUnderFaults();
+
+    int port = ReserveUdpPort();
+    var options = new NetTransportOptions
+    {
+        ConnectionKey = "fw-net-verify",
+        MaxQueuedMessages = 8,
+        PollIntervalMilliseconds = 1,
+        DisconnectTimeoutMilliseconds = 2000,
+    };
+    using var server = new LiteNetTransport();
+    using var client = new LiteNetTransport();
+    True(server.StartServer(port, options), "network loopback server start");
+    True(client.StartClient("127.0.0.1", port, options), "network loopback client start");
+    WaitUntil(
+        () => client.IsConnected && server.Snapshot().Peers == 1,
+        "network loopback connect"
+    );
+
+    byte[] payload = [1, 2, 3, 4];
+    True(client.SendToServer(payload, 1, NetDelivery.ReliableOrdered), "network reliable send");
+    NetReceivedMessage connected = WaitMessage(server, message => message.Connected);
+    True(payload.SequenceEqual(connected.Payload), "network reliable payload");
+    True(server.Send(connected.RemoteEndPoint, [9], 2, NetDelivery.ReliableSequenced), "network server reply");
+    NetReceivedMessage reply = WaitMessage(client, message => message.Connected);
+    Equal((byte)9, reply.Payload[0], "network reliable reply");
+
+    byte[] fragmentedPayload = Enumerable.Range(0, 64 * 1024)
+        .Select(index => (byte)(index % 251))
+        .ToArray();
+    True(
+        client.SendToServer(fragmentedPayload, 5, NetDelivery.ReliableOrdered),
+        "network fragmented reliable send"
+    );
+    NetReceivedMessage fragmented = WaitMessage(server, message => message.Connected);
+    True(fragmentedPayload.SequenceEqual(fragmented.Payload), "network fragmented reliable payload");
+    fragmentedPayload[0] = 77;
+    True(
+        client.SendToServer(fragmentedPayload, 6, NetDelivery.ReliableUnordered),
+        "network fragmented unordered send"
+    );
+    NetReceivedMessage unordered = WaitMessage(server, message => message.Connected);
+    True(fragmentedPayload.SequenceEqual(unordered.Payload), "network fragmented unordered payload");
+
+    True(server.Disconnect(connected.RemoteEndPoint), "network authority disconnect");
+    WaitUntil(
+        () => server.Snapshot().Peers == 0 && !client.IsConnected,
+        "network authority disconnect completes"
+    );
+    True(!server.Disconnect(connected.RemoteEndPoint), "network authority disconnect is idempotent");
+
+    using var discovery = new LiteNetTransport();
+    True(discovery.StartUnconnected(options), "network discovery start");
+    True(
+        discovery.SendUnconnected(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port), [8, 7]),
+        "network discovery send"
+    );
+    NetReceivedMessage unconnected = WaitMessage(server, message => !message.Connected);
+    Equal((byte)8, unconnected.Payload[0], "network discovery payload");
+    for (int index = 0; index < 64; index++)
+    {
+        True(
+            discovery.SendUnconnected(
+                new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port),
+                [8, 7]
+            ),
+            "network discovery flood send"
+        );
+    }
+    WaitUntil(() => server.Snapshot().QueueDrops > 0, "network bounded receive queue");
+
+    int tcpPort = ReserveTcpPort();
+    using var tcpServer = new TcpNetTransport();
+    using var tcpClient = new TcpNetTransport();
+    True(tcpServer.StartServer(tcpPort, options), "tcp loopback server start");
+    True(tcpClient.StartClient("127.0.0.1", tcpPort, options), "tcp loopback client start");
+    WaitUntil(
+        () => tcpClient.IsConnected && tcpServer.Snapshot().Peers == 1,
+        "tcp loopback connect"
+    );
+    True(
+        tcpClient.SendToServer(fragmentedPayload, 5, NetDelivery.ReliableOrdered),
+        "tcp framed send"
+    );
+    NetReceivedMessage tcpMessage = WaitMessage(tcpServer, message => message.Connected);
+    True(fragmentedPayload.SequenceEqual(tcpMessage.Payload), "tcp framed payload");
+    True(
+        tcpServer.Send(tcpMessage.RemoteEndPoint, [4, 3, 2, 1], 2, NetDelivery.ReliableSequenced),
+        "tcp server reply"
+    );
+    NetReceivedMessage tcpReply = WaitMessage(tcpClient, message => message.Connected);
+    True(new byte[] { 4, 3, 2, 1 }.SequenceEqual(tcpReply.Payload), "tcp reply payload");
+    True(tcpServer.Disconnect(tcpMessage.RemoteEndPoint), "tcp authority disconnect");
+    WaitUntil(
+        () => tcpServer.Snapshot().Peers == 0 && !tcpClient.IsConnected,
+        "tcp authority disconnect completes"
+    );
+}
+
+static void VerifyReliableCommandsUnderFaults()
+{
+    var journal = new NetCommandJournal(128);
+    for (uint tick = 1; tick <= 100; tick++)
+    {
+        True(
+            journal.TryAppend(tick, BitConverter.GetBytes(tick), 0, 60_000, out _),
+            "faulted command journal append"
+        );
+    }
+    var ledger = new NetCommandLedger(128);
+    var uplink = new NetFaultSimulator<NetCommand>(new NetFaultOptions
+    {
+        Loss = 0.4,
+        Duplicate = 0.25,
+        Reorder = 0.35,
+        MinimumDelayMilliseconds = 5,
+        MaximumDelayMilliseconds = 80,
+        Seed = 103,
+    });
+    var downlink = new NetFaultSimulator<NetCommandReceipt>(new NetFaultOptions
+    {
+        Loss = 0.4,
+        Duplicate = 0.25,
+        Reorder = 0.35,
+        MinimumDelayMilliseconds = 5,
+        MaximumDelayMilliseconds = 80,
+        Seed = 211,
+    });
+
+    for (long now = 0; now <= 60_000 && journal.Count > 0; now += 10)
+    {
+        foreach (NetCommand command in journal.Pending(8))
+        {
+            uplink.Enqueue(command, now);
+        }
+        foreach (NetCommand command in uplink.Receive(now, 64))
+        {
+            NetCommandReceipt receipt = ledger.Commit(
+                command.Id,
+                NetCommandStatus.Applied,
+                now / 10
+            );
+            downlink.Enqueue(receipt, now);
+        }
+        foreach (NetCommandReceipt receipt in downlink.Receive(now, 64))
+        {
+            journal.Complete(receipt);
+        }
+    }
+
+    Equal(0, journal.Count, "faulted command journal eventually drains");
+    Equal(100, ledger.Count, "faulted command ledger applies each id once");
+}
+
+static int ReserveUdpPort()
+{
+    using var socket = new System.Net.Sockets.UdpClient(0);
+    return ((System.Net.IPEndPoint)socket.Client.LocalEndPoint!).Port;
+}
+
+static int ReserveTcpPort()
+{
+    var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+    listener.Start();
+    int port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
+    listener.Stop();
+    return port;
+}
+
+static void WaitUntil(Func<bool> predicate, string label, int timeoutMilliseconds = 10_000)
+{
+    long deadline = Environment.TickCount64 + timeoutMilliseconds;
+    while (Environment.TickCount64 < deadline)
+    {
+        if (predicate())
+        {
+            return;
+        }
+        Thread.Sleep(5);
+    }
+    throw new InvalidOperationException($"Verification failed: {label} timed out.");
+}
+
+static NetReceivedMessage WaitMessage(
+    INetTransport transport,
+    Func<NetReceivedMessage, bool> predicate,
+    int timeoutMilliseconds = 3000
+)
+{
+    NetReceivedMessage? result = null;
+    WaitUntil(
+        () =>
+        {
+            foreach (NetReceivedMessage message in transport.Receive(64))
+            {
+                if (predicate(message))
+                {
+                    result = message;
+                    return true;
+                }
+            }
+            return false;
+        },
+        "network message receive",
+        timeoutMilliseconds
+    );
+    return result!;
+}
 
 static void VerifySystemRuntime()
 {
@@ -62,6 +383,15 @@ static void VerifySystemRuntime()
     True(child.GetContext<TestContext>("root") == rootContext, "parent context lookup");
     var snapshots = child.GetSnapshots();
     True(snapshots.Any(item => item.Scope.StartsWith("parent/", StringComparison.Ordinal)), "parent snapshot");
+    var timings = child.GetTimingSnapshots();
+    True(timings.Any(item => item.Scope.StartsWith("parent/", StringComparison.Ordinal)), "parent timing snapshot");
+    SystemTimingSnapshot inputTiming = timings.Single(item => item.Id == "input");
+    Equal(1, inputTiming.SampleCount, "system timing sample count");
+    True(inputTiming.LastMilliseconds >= 0.0, "system timing last");
+    True(inputTiming.AverageMilliseconds >= 0.0, "system timing average");
+    True(inputTiming.P95Milliseconds >= 0.0, "system timing p95");
+    True(inputTiming.MaxMilliseconds >= inputTiming.LastMilliseconds, "system timing max");
+    True(inputTiming.LastAllocatedBytes >= 0L, "system timing allocated bytes");
 
     Throws<InvalidOperationException>(
         () => child.Remove("input"),
@@ -415,6 +745,9 @@ static void VerifyUtility()
     scope = Scope(10);
     result = selector.Select(3, scope, "low", 3.0);
     Equal("low", result.Id, "utility switching threshold");
+
+    result = selector.Select(3, Scope(1));
+    True(!result.Complete && !result.HasChoice, "utility rejects partial scoring");
 }
 
 static void VerifyBehavior()
@@ -433,6 +766,56 @@ static void VerifyBehavior()
 
     var suspended = new BehaviorTree<int>(new BehaviorAction<int>(_ => BehaviorStatus.Success));
     Equal(BehaviorStatus.Suspended, suspended.Tick(1, new BehaviorSession(), Scope(0)), "behavior budget");
+
+    bool urgent = false;
+    var delayed = new BehaviorWait<bool>(_ => 1);
+    var reactive = new BehaviorTree<bool>(new BehaviorReactiveSelector<bool>(
+        new BehaviorCondition<bool>(value => value),
+        delayed
+    ));
+    var reactiveSession = new BehaviorSession();
+    Equal(
+        BehaviorStatus.Running,
+        reactive.Tick(urgent, reactiveSession, Scope(20)),
+        "reactive fallback starts"
+    );
+    urgent = true;
+    Equal(
+        BehaviorStatus.Success,
+        reactive.Tick(urgent, reactiveSession, Scope(20)),
+        "reactive priority branch preempts fallback"
+    );
+    urgent = false;
+    Equal(
+        BehaviorStatus.Running,
+        reactive.Tick(urgent, reactiveSession, Scope(20)),
+        "preempted reactive branch restarts cleanly"
+    );
+
+    bool allowed = true;
+    var sequenceDelay = new BehaviorWait<bool>(_ => 1);
+    var reactiveSequence = new BehaviorTree<bool>(new BehaviorReactiveSequence<bool>(
+        new BehaviorCondition<bool>(_ => allowed),
+        sequenceDelay
+    ));
+    var reactiveSequenceSession = new BehaviorSession();
+    Equal(
+        BehaviorStatus.Running,
+        reactiveSequence.Tick(true, reactiveSequenceSession, Scope(20)),
+        "reactive sequence starts trailing branch"
+    );
+    allowed = false;
+    Equal(
+        BehaviorStatus.Failure,
+        reactiveSequence.Tick(true, reactiveSequenceSession, Scope(20)),
+        "reactive sequence aborts on leading condition"
+    );
+    allowed = true;
+    Equal(
+        BehaviorStatus.Running,
+        reactiveSequence.Tick(true, reactiveSequenceSession, Scope(20)),
+        "aborted reactive sequence branch restarts cleanly"
+    );
 }
 
 static void VerifyPlan()
@@ -449,6 +832,462 @@ static void VerifyPlan()
     while (result.Status == PlanStatus.Searching);
     Equal(PlanStatus.Complete, result.Status, "plan completes");
     Equal("find_key,open_door", string.Join(',', result.Actions.Select(item => item.Id)), "plan order");
+}
+
+static void VerifyDecisionGraph()
+{
+    var blackboard = new Blackboard();
+    blackboard.Set("score", 0.75);
+    blackboard.Set("ready", true);
+    var clone = blackboard.Clone();
+    clone.Set("score", 0.5);
+    Equal(0.75, blackboard.Number("score"), "blackboard clone isolation");
+
+    const string utilityJson = """
+    {
+      "id": "utility_test",
+      "nodes": [
+        { "id": 1, "type": "UtilityRoot", "values": { "name": "main" } },
+        { "id": 2, "type": "UtilityGoal", "values": { "name": "act" } },
+        { "id": 3, "type": "FactNumber", "values": { "key": "score" } },
+        { "id": 4, "type": "ReactiveSequence", "values": {} },
+        { "id": 5, "type": "Condition", "values": { "order": 0 } },
+        { "id": 6, "type": "FactBool", "values": { "key": "ready" } },
+        { "id": 7, "type": "Task", "values": { "name": "act", "order": 1 } }
+      ],
+      "edges": [
+        { "id": "goal", "from": { "node": 1, "port": "goal" }, "to": { "node": 2, "port": "goal" } },
+        { "id": "score", "from": { "node": 3, "port": "value" }, "to": { "node": 2, "port": "score" } },
+        { "id": "goal_condition", "from": { "node": 6, "port": "value" }, "to": { "node": 2, "port": "condition" } },
+        { "id": "behavior", "from": { "node": 2, "port": "behavior" }, "to": { "node": 4, "port": "parent" } },
+        { "id": "condition", "from": { "node": 6, "port": "value" }, "to": { "node": 5, "port": "condition" } },
+        { "id": "child_condition", "from": { "node": 4, "port": "child" }, "to": { "node": 5, "port": "parent" } },
+        { "id": "child_task", "from": { "node": 4, "port": "child" }, "to": { "node": 7, "port": "parent" } }
+      ]
+    }
+    """;
+    DecisionGraph utilityGraph = DecisionGraph.Parse(utilityJson);
+    var expression = new DecisionExpression(utilityGraph);
+    var exhaustedExpressionScope = Scope(0);
+    Throws<DecisionGraphBudgetException>(
+        () => expression.Number(3, blackboard, exhaustedExpressionScope),
+        "expression budget exhaustion"
+    );
+    exhaustedExpressionScope.Budget.Reset();
+    Throws<DecisionGraphBudgetException>(
+        () => expression.Number(3, blackboard, exhaustedExpressionScope),
+        "expression scope clears path after failure"
+    );
+    var utility = new UtilityProgram(utilityGraph, "main");
+    var utilitySession = new DecisionSession();
+    var taskHost = new TestDecisionHost();
+    DecisionResult utilityResult = utility.Tick(
+        blackboard,
+        utilitySession,
+        taskHost,
+        Scope(32)
+    );
+    Equal("act", utilityResult.Active, "utility graph choice");
+    Equal(BehaviorStatus.Success, utilityResult.Status, "utility graph behavior");
+    Equal("act", taskHost.LastTask, "utility graph task host");
+    blackboard.Set("ready", false);
+    DecisionResult unavailableResult = utility.Tick(
+        blackboard,
+        utilitySession,
+        taskHost,
+        Scope(32),
+        reselect: false
+    );
+    Equal("", unavailableResult.Active, "utility drops unavailable pinned goal");
+    Equal(BehaviorStatus.Failure, unavailableResult.Status,
+        "utility fails safely when every goal is unavailable");
+    Equal("", utilitySession.ChoiceId, "utility clears unavailable pinned session");
+    blackboard.Set("ready", true);
+    var pinnedSession = new DecisionSession();
+    DecisionResult pinnedResult = utility.TickGoal(
+        "act",
+        blackboard,
+        pinnedSession,
+        taskHost,
+        Scope(32)
+    );
+    Equal("act", pinnedResult.Active, "utility graph pinned goal");
+    Equal("act", pinnedSession.ChoiceId, "utility graph pinned session");
+    Throws<DecisionGraphException>(
+        () => utility.TickGoal("missing", blackboard, pinnedSession, taskHost, Scope(32)),
+        "utility graph rejects unknown pinned goal"
+    );
+
+    const string utilityIdleFragment = """
+    {
+      "id": "utility_idle",
+      "nodes": [
+        { "id": 1, "type": "UtilityRoot", "values": { "name": "main", "switch_threshold": 0.1 } },
+        { "id": 2, "type": "UtilityGoal", "values": { "name": "idle", "order": 1 } },
+        { "id": 3, "type": "Number", "values": { "value": 0.25 } },
+        { "id": 4, "type": "Succeed", "values": {} }
+      ],
+      "edges": [
+        { "id": "goal", "from": { "node": 1, "port": "goal" }, "to": { "node": 2, "port": "goal" } },
+        { "id": "score", "from": { "node": 3, "port": "value" }, "to": { "node": 2, "port": "score" } },
+        { "id": "behavior", "from": { "node": 2, "port": "behavior" }, "to": { "node": 4, "port": "child" } }
+      ]
+    }
+    """;
+    const string utilityFightFragment = """
+    {
+      "id": "utility_fight",
+      "nodes": [
+        { "id": 1, "type": "UtilityRoot", "values": { "name": "main", "switch_threshold": 0.1 } },
+        { "id": 2, "type": "UtilityGoal", "values": { "name": "fight", "order": 0 } },
+        { "id": 3, "type": "Number", "values": { "value": 0.75 } },
+        { "id": 4, "type": "Succeed", "values": {} }
+      ],
+      "edges": [
+        { "id": "goal", "from": { "node": 1, "port": "goal" }, "to": { "node": 2, "port": "goal" } },
+        { "id": "score", "from": { "node": 3, "port": "value" }, "to": { "node": 2, "port": "score" } },
+        { "id": "behavior", "from": { "node": 2, "port": "behavior" }, "to": { "node": 4, "port": "child" } }
+      ]
+    }
+    """;
+    DecisionGraph composedUtility = DecisionGraph.Compose(
+        "utility_set",
+        [
+            DecisionGraph.Parse(utilityIdleFragment),
+            DecisionGraph.Parse(utilityFightFragment),
+        ]
+    );
+    Equal(1, composedUtility.NodesOfType("UtilityRoot").Count, "composed utility root");
+    Equal(2, composedUtility.NodesOfType("UtilityGoal").Count, "composed utility goals");
+    DecisionResult composedResult = new UtilityProgram(
+        composedUtility,
+        "main"
+    ).Tick(blackboard, new DecisionSession(), taskHost, Scope(32));
+    Equal("fight", composedResult.Active, "composed utility selection");
+
+    const string stateJson = """
+    {
+      "id": "state_test",
+      "nodes": [
+        { "id": 10, "type": "StateTreeRoot", "values": { "name": "monster" } },
+        { "id": 11, "type": "State", "values": { "name": "idle", "initial": true, "view_state": "idle" } },
+        { "id": 12, "type": "State", "values": { "name": "attack", "view_state": "attack" } },
+        { "id": 13, "type": "Transition", "values": { "target": "attack", "trigger": "tick" } },
+        { "id": 14, "type": "FactBool", "values": { "key": "ready" } },
+        { "id": 15, "type": "Succeed", "values": {} }
+      ],
+      "edges": [
+        { "id": "idle", "from": { "node": 10, "port": "state" }, "to": { "node": 11, "port": "state" } },
+        { "id": "attack", "from": { "node": 10, "port": "state" }, "to": { "node": 12, "port": "state" } },
+        { "id": "transition", "from": { "node": 11, "port": "transition" }, "to": { "node": 13, "port": "transition" } },
+        { "id": "transition_condition", "from": { "node": 14, "port": "value" }, "to": { "node": 13, "port": "condition" } },
+        { "id": "attack_task", "from": { "node": 12, "port": "task" }, "to": { "node": 15, "port": "parent" } }
+      ]
+    }
+    """;
+    var state = new StateProgram(DecisionGraph.Parse(stateJson), "monster");
+    DecisionResult stateResult = state.Tick(
+        blackboard,
+        new DecisionSession(),
+        taskHost,
+        Scope(32)
+    );
+    Equal("attack", stateResult.Active, "state graph transition");
+
+    const string nestedStateJson = """
+    {
+      "id": "nested_state_test",
+      "nodes": [
+        { "id": 30, "type": "StateTreeRoot", "values": { "name": "nested" } },
+        { "id": 31, "type": "State", "values": { "name": "parent", "initial": true } },
+        { "id": 32, "type": "State", "values": { "name": "child", "initial": true } },
+        { "id": 33, "type": "Wait", "values": { "ticks": 1 } },
+        { "id": 34, "type": "Wait", "values": { "ticks": 1 } }
+      ],
+      "edges": [
+        { "id": "parent", "from": { "node": 30, "port": "state" }, "to": { "node": 31, "port": "state" } },
+        { "id": "child", "from": { "node": 31, "port": "state" }, "to": { "node": 32, "port": "state" } },
+        { "id": "parent_task", "from": { "node": 31, "port": "task" }, "to": { "node": 33, "port": "child" } },
+        { "id": "child_task", "from": { "node": 32, "port": "task" }, "to": { "node": 34, "port": "child" } }
+      ]
+    }
+    """;
+    var nestedState = new StateProgram(
+        DecisionGraph.Parse(nestedStateJson),
+        "nested"
+    );
+    var nestedSession = new DecisionSession();
+    Equal(
+        BehaviorStatus.Running,
+        nestedState.Tick(blackboard, nestedSession, taskHost, Scope(32)).Status,
+        "nested state tasks start together"
+    );
+    Equal(1, nestedSession.State.StateTicks, "entered state advances after its first tick");
+    Equal(
+        BehaviorStatus.Success,
+        nestedState.Tick(blackboard, nestedSession, taskHost, Scope(32)).Status,
+        "nested state tasks keep independent cursors"
+    );
+    Equal(2, nestedSession.State.StateTicks, "stable state advances once per tick");
+
+    var budgetState = new Fw.Rt.AI.State.StateTree<int>(
+    [
+        new Fw.Rt.AI.State.StateNode<int>(
+            "idle",
+            initial: true,
+            task: (_, _, _) => BehaviorStatus.Success,
+            transitions:
+            [
+                new Fw.Rt.AI.State.StateTransition<int>(
+                    "done",
+                    Fw.Rt.AI.State.StateTransitionTrigger.Success
+                ),
+            ]
+        ),
+        new Fw.Rt.AI.State.StateNode<int>("done"),
+    ]);
+    var budgetStateSession = new Fw.Rt.AI.State.StateTreeSession();
+    Fw.Rt.AI.State.StateTreeResult budgetStateResult = budgetState.Tick(
+        0,
+        budgetStateSession,
+        Scope(1)
+    );
+    Equal(
+        BehaviorStatus.Suspended,
+        budgetStateResult.Status,
+        "state transition budget exhaustion suspends instead of skipping"
+    );
+    Equal("idle", budgetStateSession.ActiveState, "suspended transition does not activate target");
+    Equal(0, budgetStateSession.StateTicks, "suspended transition does not advance state time");
+
+    const string planJson = """
+    {
+      "id": "plan_test",
+      "nodes": [
+        { "id": 20, "type": "GoapRoot", "values": { "name": "main" } },
+        { "id": 21, "type": "GoapGoal", "values": { "name": "escape", "requires": ["open"] } },
+        { "id": 22, "type": "GoapAction", "values": { "name": "find_key", "adds": ["key"], "cost": 1 } },
+        { "id": 23, "type": "GoapAction", "values": { "name": "open_door", "requires": ["key"], "adds": ["open"], "cost": 1 } }
+      ],
+      "edges": [
+        { "id": "plan_goal", "from": { "node": 20, "port": "goal" }, "to": { "node": 21, "port": "goal" } },
+        { "id": "plan_action_1", "from": { "node": 20, "port": "action" }, "to": { "node": 22, "port": "action" } },
+        { "id": "plan_action_2", "from": { "node": 20, "port": "action" }, "to": { "node": 23, "port": "action" } }
+      ]
+    }
+    """;
+    var plan = new PlanGraph(DecisionGraph.Parse(planJson), "main");
+    PlanResult<string> planResult = plan.Complete([], "escape", Scope(32));
+    Equal(PlanStatus.Complete, planResult.Status, "GOAP graph completes");
+    Equal("find_key,open_door", string.Join(',', planResult.Actions.Select(item => item.Id)), "GOAP graph order");
+}
+
+static void VerifyDecisionAssets()
+{
+    const string conditions = """
+    {
+      "id": "test",
+      "conditions": [
+        {
+          "id": "ready",
+          "groups": [
+            { "clauses": [{ "fact": "ready", "op": "true" }] }
+          ]
+        }
+      ]
+    }
+    """;
+    var trees = new Dictionary<string, string>(StringComparer.Ordinal)
+    {
+        ["act"] = """
+        {
+          "id": "act",
+          "nodes": [
+            { "id": 1, "type": "TreeRoot", "values": { "name": "act" } },
+            { "id": 2, "type": "Sequence", "values": {} },
+            { "id": 3, "type": "Guard", "values": { "condition": "ready", "order": 0 } },
+            { "id": 4, "type": "MoveTo", "values": { "target": "threat", "order": 1 } }
+          ],
+          "edges": [
+            { "id": "root", "from": { "node": 1, "port": "child" }, "to": { "node": 2, "port": "child" } },
+            { "id": "guard", "from": { "node": 2, "port": "child" }, "to": { "node": 3, "port": "child" } },
+            { "id": "task", "from": { "node": 2, "port": "child" }, "to": { "node": 4, "port": "child" } }
+          ]
+        }
+        """,
+        ["idle"] = """
+        {
+          "id": "idle",
+          "nodes": [
+            { "id": 1, "type": "TreeRoot", "values": { "name": "idle" } },
+            { "id": 2, "type": "Succeed", "values": {} }
+          ],
+          "edges": [
+            { "id": "root", "from": { "node": 1, "port": "child" }, "to": { "node": 2, "port": "child" } }
+          ]
+        }
+        """,
+    };
+    DecisionAssets assets = DecisionAssets.Parse(conditions, trees);
+    Equal("act,idle", string.Join(',', assets.Trees), "decision asset tree catalog");
+
+    UtilityProgram utilityProgram = assets.Utility("""
+    {
+      "id": "utility",
+      "goals": [
+        {
+          "id": "act",
+          "tree": "act",
+          "condition": "ready",
+          "base": 0.2,
+          "scores": [
+            { "combine": "add", "fact": "urgency", "curve": "linear", "scale": 0.5 }
+          ]
+        },
+        { "id": "idle", "tree": "idle", "base": 0.1, "order": 1, "scores": [] }
+      ]
+    }
+    """);
+    var blackboard = new Blackboard();
+    blackboard.Set("ready", true);
+    blackboard.Set("urgency", 1.0);
+    var host = new TestDecisionHost();
+    True(utilityProgram.IsAvailable("act", blackboard, Scope(64)),
+        "authored utility available condition");
+    blackboard.Set("ready", false);
+    True(!utilityProgram.IsAvailable("act", blackboard, Scope(64)),
+        "authored utility unavailable condition");
+    blackboard.Set("ready", true);
+    DecisionResult utility = utilityProgram.Tick(
+        blackboard,
+        new DecisionSession(),
+        host,
+        Scope(64)
+    );
+    Equal("act", utility.Active, "authored utility selection");
+    Equal("move_to", host.LastTask, "authored semantic task behavior");
+
+    StateProgram stateProgram = assets.State("""
+    {
+      "id": "state",
+      "initial": "idle",
+      "states": [
+        {
+          "name": "idle",
+          "tree": "idle",
+          "transitions": [
+            { "target": "active", "condition": "ready", "trigger": "tick", "priority": 10 }
+          ]
+        },
+        { "name": "active", "tree": "act", "transitions": [] }
+      ]
+    }
+    """);
+    DecisionResult state = stateProgram.Tick(
+        blackboard,
+        new DecisionSession(),
+        host,
+        Scope(64)
+    );
+    Equal("active", state.Active, "authored state transition");
+    Throws<DecisionGraphException>(
+        () => assets.BuildState("""
+        {
+          "id": "invalid_state",
+          "initial": "missing",
+          "states": [{ "name": "idle", "tree": "idle", "transitions": [] }]
+        }
+        """),
+        "authored state validates initial state"
+    );
+    Throws<DecisionGraphException>(
+        () => assets.BuildState("""
+        {
+          "id": "invalid_state",
+          "initial": "idle",
+          "states": [
+            {
+              "name": "idle",
+              "tree": "idle",
+              "transitions": [{ "target": "missing", "trigger": "tick" }]
+            }
+          ]
+        }
+        """),
+        "authored state validates transition target"
+    );
+    Throws<DecisionGraphException>(
+        () => assets.BuildState("""
+        {
+          "id": "cyclic_state",
+          "initial": "a",
+          "states": [
+            { "name": "a", "parent": "b", "tree": "idle", "transitions": [] },
+            { "name": "b", "parent": "a", "tree": "idle", "transitions": [] }
+          ]
+        }
+        """),
+        "authored state rejects cyclic parents"
+    );
+
+    PlanGraph planGraph = assets.Plan("""
+    {
+      "id": "plan",
+      "goals": [{ "id": "escape", "requires": ["open"] }],
+      "actions": [
+        { "id": "key", "requires": [], "adds": ["key"], "removes": [], "cost": 1 },
+        { "id": "open", "requires": ["key"], "adds": ["open"], "removes": [], "cost": 1 }
+      ]
+    }
+    """);
+    PlanResult<string> plan = planGraph.Complete([], "escape", Scope(64));
+    Equal("key,open", string.Join(',', plan.Actions.Select(item => item.Id)), "authored GOAP plan");
+
+    var invalidTrees = new Dictionary<string, string>(trees, StringComparer.Ordinal)
+    {
+        ["invalid"] = """
+        {
+          "id": "invalid",
+          "nodes": [
+            { "id": 1, "type": "TreeRoot", "values": {} },
+            { "id": 2, "type": "Sequence", "values": {} },
+            { "id": 3, "type": "Task", "values": { "name": "act" } }
+          ],
+          "edges": [
+            { "id": "root", "from": { "node": 1, "port": "child" }, "to": { "node": 2, "port": "child" } },
+            { "id": "first", "from": { "node": 2, "port": "child" }, "to": { "node": 3, "port": "child" } },
+            { "id": "second", "from": { "node": 1, "port": "child" }, "to": { "node": 3, "port": "child" } }
+          ]
+        }
+        """,
+    };
+    Throws<DecisionGraphException>(
+        () => DecisionAssets.Parse(conditions, invalidTrees),
+        "authored tree requires one parent"
+    );
+    var disconnectedTrees = new Dictionary<string, string>(trees, StringComparer.Ordinal)
+    {
+        ["disconnected"] = """
+        {
+          "id": "disconnected",
+          "nodes": [
+            { "id": 1, "type": "TreeRoot", "values": {} },
+            { "id": 2, "type": "Succeed", "values": {} },
+            { "id": 3, "type": "Sequence", "values": {} },
+            { "id": 4, "type": "Invert", "values": {} }
+          ],
+          "edges": [
+            { "id": "root", "from": { "node": 1, "port": "child" }, "to": { "node": 2, "port": "child" } },
+            { "id": "cycle_a", "from": { "node": 3, "port": "child" }, "to": { "node": 4, "port": "child" } },
+            { "id": "cycle_b", "from": { "node": 4, "port": "child" }, "to": { "node": 3, "port": "child" } }
+          ]
+        }
+        """,
+    };
+    Throws<DecisionGraphException>(
+        () => DecisionAssets.Parse(conditions, disconnectedTrees),
+        "authored tree rejects disconnected cycles"
+    );
 }
 
 static void VerifyNavigation()
@@ -615,6 +1454,22 @@ static void VerifyPuctSearch()
 
 static void VerifyTrainingAndEvaluation()
 {
+    var parallelSpec = new GameEnvironmentSpec(
+        "parallel",
+        2,
+        information: GameInformation.Imperfect,
+        moveMode: GameMoveMode.Simultaneous,
+        payoffMode: GamePayoffMode.ZeroSum
+    );
+    ParallelEnvironmentGuard.ValidateActors([0, 1], parallelSpec);
+    ParallelEnvironmentGuard.ValidateActions([0, 1], new Dictionary<int, string>
+    {
+        [0] = "left",
+        [1] = "right",
+    });
+    var parallelView = new ParallelActorView<int, string>(0, 7, ["left", "right"]);
+    Equal(2, parallelView.LegalActions.Count, "parallel actor legal actions");
+
     var sample = new PolicyValueSample<int, string>(
         2,
         0,
@@ -713,6 +1568,294 @@ static void VerifyTrainingAndEvaluation()
         "linear serialized checkpoint policy");
     Near(positive.Values[0], serializedPrediction.Values[0], 1e-12,
         "linear serialized checkpoint value");
+
+    var dense = new DenseActorCriticModel(
+        "verify_dense_v1",
+        inputCount: 2,
+        hiddenCount: 8,
+        actionCount: 2,
+        seed: 19
+    );
+    var denseTrainer = new DensePpoTrainer(
+        dense,
+        new DensePpoTrainingOptions(
+            epochs: 1,
+            batchSize: 2,
+            learningRate: 0.01,
+            entropyCoefficient: 0.0
+        )
+    );
+    var imitation = new[]
+    {
+        new DenseImitationSample([-1.0, 1.0], [true, true], 0),
+        new DenseImitationSample([1.0, 1.0], [true, true], 1),
+    };
+    DenseTrainingResult imitationResult = denseTrainer.TrainImitation(
+        imitation,
+        new DeterministicRandomStream(23),
+        epochs: 200
+    );
+    Equal(400, imitationResult.Samples, "dense imitation sample count");
+    DenseActorCriticPrediction denseNegative = dense.Predict([-1.0, 1.0], [true, true]);
+    DenseActorCriticPrediction densePositive = dense.Predict([1.0, 1.0], [true, true]);
+    True(denseNegative.Probabilities[0] > 0.9, "dense imitation negative policy");
+    True(densePositive.Probabilities[1] > 0.9, "dense imitation positive policy");
+
+    DensePolicyChoice oldChoice = dense.Choose(
+        [1.0, 1.0],
+        [true, true],
+        new DeterministicRandomStream(29),
+        sample: false
+    );
+    DenseTrainingResult ppoResult = denseTrainer.Train(
+        [new DensePpoSample(
+            [1.0, 1.0],
+            [true, true],
+            oldChoice.Action,
+            Math.Log(oldChoice.Probability),
+            advantage: 1.0,
+            valueTarget: 1.0
+        )],
+        new DeterministicRandomStream(31)
+    );
+    Equal(1, ppoResult.Updates, "dense PPO call-local update count");
+
+    var guardedDense = new DenseActorCriticModel(
+        "verify_dense_kl_v1",
+        inputCount: 2,
+        hiddenCount: 8,
+        actionCount: 2,
+        seed: 41
+    );
+    DensePolicyChoice guardedChoice = guardedDense.Choose(
+        [1.0, 1.0],
+        [true, true],
+        new DeterministicRandomStream(43),
+        sample: false
+    );
+    var guardedTrainer = new DensePpoTrainer(
+        guardedDense,
+        new DensePpoTrainingOptions(
+            epochs: 4,
+            batchSize: 1,
+            learningRate: 0.01,
+            entropyCoefficient: 0.0,
+            targetKl: double.Epsilon
+        )
+    );
+    DenseTrainingResult guardedResult = guardedTrainer.Train(
+        [new DensePpoSample(
+            [1.0, 1.0],
+            [true, true],
+            guardedChoice.Action,
+            Math.Log(guardedChoice.Probability),
+            advantage: 1.0,
+            valueTarget: 1.0
+        )],
+        new DeterministicRandomStream(47)
+    );
+    Equal(2, guardedResult.Samples, "dense PPO target KL stops before all epochs");
+    Equal(2, guardedResult.Updates, "dense PPO target KL update count");
+
+    DenseActorCriticCheckpoint denseCheckpoint = DenseActorCriticCheckpoint.FromJson(
+        dense.ExportCheckpoint().ToJson()
+    );
+    var restoredDense = new DenseActorCriticModel(denseCheckpoint);
+    DenseActorCriticPrediction restoredDensePrediction = restoredDense.Predict(
+        [1.0, 1.0],
+        [true, true]
+    );
+    Near(
+        dense.Predict([1.0, 1.0], [true, true]).Probabilities[1],
+        restoredDensePrediction.Probabilities[1],
+        1e-12,
+        "dense serialized checkpoint policy"
+    );
+
+    var league = new ZeroSumLeague();
+    league.Add("candidate", "champion", 1.0);
+    league.Add("candidate", "champion", 0.0);
+    LeaguePayoff candidatePayoff = league.Get("candidate", "champion");
+    Near(0.5, candidatePayoff.Mean, 1e-12, "league payoff mean");
+    Near(-0.5, league.Get("champion", "candidate").Mean, 1e-12, "league reverse payoff");
+    IReadOnlyDictionary<string, double> meta = league.MetaStrategy(["candidate", "champion"], 200);
+    Near(1.0, meta.Values.Sum(), 1e-12, "league meta strategy mass");
+    True(meta.ContainsKey(league.SampleOpponent(meta, new DeterministicRandomStream(37))),
+        "league deterministic sample");
+}
+
+static void VerifyScript()
+{
+    using var runtime = new ScriptRuntime(new ScriptRuntimeOptions(
+        LoadInstructionLimit: 10_000,
+        CallInstructionLimit: 2_000
+    ));
+    runtime.Load("decision", """
+        return {
+            decide = function(input, api)
+                local bonus = api.query("bonus", input.value)
+                api.command("move", input.value + bonus)
+                return {
+                    total = input.value + bonus,
+                    safe = os == nil and io == nil and require == nil
+                        and load == nil and dofile == nil and math.random == nil
+                }
+            end
+        }
+        """);
+    var host = new ScriptHost();
+    host.RegisterQuery("bonus", args => Convert.ToDouble(args[0]) * 2.0);
+    var result = runtime.Call(
+        "decision",
+        "decide",
+        new Dictionary<string, object?> { ["value"] = 3 },
+        host
+    );
+    var value = (IReadOnlyDictionary<string, object?>)result.Value!;
+    Equal(9.0, value["total"], "script result");
+    Equal(true, value["safe"], "script sandbox");
+    Equal(1, result.Commands.Count, "script command count");
+    Equal("move", result.Commands[0].Name, "script command name");
+    Equal(9.0, result.Commands[0].Args[0], "script command payload");
+    True(result.Instructions > 0, "script instruction accounting");
+    True(runtime.HasFunction("decision", "decide"), "script function discovery");
+    True(runtime.HasFunction(" decision ", " decide "), "script name normalization");
+    True(!runtime.HasFunction("decision", "missing"), "missing script function discovery");
+    runtime.RequireFunction("decision", "decide");
+    Throws<ScriptRuntimeException>(
+        () => runtime.RequireFunction("decision", "missing"),
+        "required script function"
+    );
+
+    var graph = ScriptGraph.Parse("""
+        {
+          "id": "test",
+          "nodes": [
+            { "id": 1, "type": "Start", "values": {} },
+            { "id": 2, "type": "Done", "values": { "value": 4 } }
+          ],
+          "edges": [
+            { "id": "next", "from": { "node": 1, "port": "then" }, "to": { "node": 2, "port": "exec" } }
+          ]
+        }
+        """);
+    Equal("test", graph.Id, "script graph id");
+    Equal(2, graph.Nodes.Count, "script graph nodes");
+    Equal(1, graph.Edges.Count, "script graph edges");
+    True(graph.Data is not Dictionary<string, object?>, "script graph data is immutable");
+    True(graph.Nodes is not List<ScriptGraphNode>, "script graph nodes are immutable");
+    True(
+        graph.Nodes[0].Values is not Dictionary<string, object?>,
+        "script graph node values are immutable"
+    );
+    Throws<ScriptRuntimeException>(
+        () => ScriptGraph.Parse(new string('x', 4_194_305)),
+        "script graph source length limit"
+    );
+    Throws<ScriptRuntimeException>(
+        () => ScriptGraph.Parse($$"""
+            {
+              "id": "test",
+              "nodes": [
+                { "id": 1, "type": "{{new string('x', 129)}}", "values": {} }
+              ],
+              "edges": []
+            }
+            """),
+        "script graph identifier length limit"
+    );
+
+    using var limited = new ScriptRuntime(new ScriptRuntimeOptions(
+        LoadInstructionLimit: 1_000,
+        CallInstructionLimit: 100
+    ));
+    limited.Load("loop", "return { run = function() while true do end end }");
+    Throws<ScriptBudgetException>(() => limited.Call("loop", "run"), "script instruction budget");
+
+    using var transactional = new ScriptRuntime();
+    transactional.Load(
+        "transaction",
+        "return { run = function(_, api) api.command('discarded'); error('stop') end }"
+    );
+    Throws<ScriptRuntimeException>(
+        () => transactional.Call("transaction", "run"),
+        "script commands are discarded on error"
+    );
+
+    using var hardened = new ScriptRuntime(new ScriptRuntimeOptions(
+        LoadInstructionLimit: 10_000,
+        CallInstructionLimit: 2_000,
+        MaxValueDepth: 8,
+        MaxCollectionItems: 2,
+        MaxStringLength: 8,
+        MaxCommands: 1
+    ));
+    hardened.Load("limits", """
+        return {
+            echo = function(input) return input end,
+            non_finite = function() return 0 / 0 end,
+            long_string = function() return string.rep("x", 9) end,
+            commands = function(_, api)
+                api.command("a")
+                api.command("b")
+            end
+        }
+        """);
+    Throws<ScriptRuntimeException>(
+        () => hardened.Call("limits", "echo", double.PositiveInfinity),
+        "script input finite number"
+    );
+    Throws<ScriptRuntimeException>(
+        () => hardened.Call("limits", "non_finite"),
+        "script output finite number"
+    );
+    Throws<ScriptRuntimeException>(
+        () => hardened.Call("limits", "long_string"),
+        "script total string limit"
+    );
+    Throws<ScriptRuntimeException>(
+        () => hardened.Call("limits", "commands"),
+        "script command count limit"
+    );
+    Throws<ScriptRuntimeException>(
+        () => hardened.Call(
+            "limits",
+            "echo",
+            new Dictionary<string, object?>
+            {
+                ["a"] = 1,
+                ["b"] = new Dictionary<string, object?> { ["c"] = 2 },
+            }
+        ),
+        "script total collection limit"
+    );
+    using var duplicateJson = System.Text.Json.JsonDocument.Parse("{\"a\":1,\"a\":2}");
+    Throws<ScriptRuntimeException>(
+        () => hardened.Call("limits", "echo", duplicateJson.RootElement),
+        "script JSON duplicate keys"
+    );
+
+    using var sourceLimited = new ScriptRuntime(new ScriptRuntimeOptions(MaxSourceLength: 8));
+    Throws<ScriptRuntimeException>(
+        () => sourceLimited.Load("large", "return { run = function() end }"),
+        "script source length limit"
+    );
+
+    string excessiveGraph = System.Text.Json.JsonSerializer.Serialize(new
+    {
+        id = "too_large",
+        nodes = Enumerable.Range(0, 16_385).Select(id => new
+        {
+            id,
+            type = "Node",
+            values = new { },
+        }),
+        edges = Array.Empty<object>(),
+    });
+    Throws<ScriptRuntimeException>(
+        () => ScriptGraph.Parse(excessiveGraph),
+        "script graph node limit"
+    );
 }
 
 static DecisionScope Scope(int units)
@@ -766,6 +1909,22 @@ sealed class TestContext(string name, List<string> trace)
 {
     public string Name { get; } = name;
     public List<string> Trace { get; } = trace;
+}
+
+sealed class TestDecisionHost : ITaskHost
+{
+    public string LastTask { get; private set; } = "";
+
+    public BehaviorStatus Tick(
+        string task,
+        IReadOnlyDictionary<string, object?> parameters,
+        Blackboard blackboard,
+        DecisionScope scope
+    )
+    {
+        LastTask = task;
+        return BehaviorStatus.Success;
+    }
 }
 
 sealed class TestSystem(bool failInit = false) : ISystem<TestContext>

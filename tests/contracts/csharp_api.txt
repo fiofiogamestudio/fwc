@@ -9,6 +9,12 @@ type sealed class Fw.Rt.AI.Behavior.BehaviorInvert<TContext> : Fw.Rt.AI.Behavior
   method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
 type class Fw.Rt.AI.Behavior.BehaviorNode<TContext>
   method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.Behavior.BehaviorReactiveSelector<TContext> : Fw.Rt.AI.Behavior.BehaviorNode<TContext>
+  ctor(params Fw.Rt.AI.Behavior.BehaviorNode<TContext>[] children)
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.Behavior.BehaviorReactiveSequence<TContext> : Fw.Rt.AI.Behavior.BehaviorNode<TContext>
+  ctor(params Fw.Rt.AI.Behavior.BehaviorNode<TContext>[] children)
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
 type sealed class Fw.Rt.AI.Behavior.BehaviorSelector<TContext> : Fw.Rt.AI.Behavior.BehaviorNode<TContext>
   ctor(params Fw.Rt.AI.Behavior.BehaviorNode<TContext>[] children)
   method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
@@ -17,7 +23,9 @@ type sealed class Fw.Rt.AI.Behavior.BehaviorSequence<TContext> : Fw.Rt.AI.Behavi
   method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
 type sealed class Fw.Rt.AI.Behavior.BehaviorSession
   ctor()
+  method Fw.Rt.AI.Behavior.BehaviorSession Clone()
   method System.Void Clear(System.Object owner)
+  method System.Void CopyFrom(Fw.Rt.AI.Behavior.BehaviorSession other)
   method System.Void Reset()
   method System.Void Set<T>(System.Object owner, T value)
   method T Get<T>(System.Object owner, T fallback = null)
@@ -30,6 +38,25 @@ type sealed class Fw.Rt.AI.Behavior.BehaviorTree<TContext>
   ctor(Fw.Rt.AI.Behavior.BehaviorNode<TContext> root)
   method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
   property Fw.Rt.AI.Behavior.BehaviorNode<TContext> Root {get;}
+type sealed class Fw.Rt.AI.Behavior.BehaviorWait<TContext> : Fw.Rt.AI.Behavior.BehaviorNode<TContext>
+  ctor(System.Func<TContext,System.Int32> duration)
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(TContext context, Fw.Rt.AI.Behavior.BehaviorSession session, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.Core.Blackboard
+  ctor()
+  method Fw.Rt.AI.Core.Blackboard Clone()
+  method System.Boolean Boolean(System.String key, System.Boolean fallback = false)
+  method System.Boolean Contains(System.String key)
+  method System.Boolean Remove(System.String key)
+  method System.Boolean TryGet<T>(System.String key, out T value)
+  method System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Snapshot()
+  method System.Double Number(System.String key, System.Double fallback = 0)
+  method System.Object Value(System.String key, System.Object fallback = null)
+  method System.String Text(System.String key, System.String fallback = "")
+  method System.Void Clear()
+  method System.Void CopyFrom(Fw.Rt.AI.Core.Blackboard other)
+  method System.Void Set(System.String key, System.Object value)
+  property System.Collections.Generic.IEnumerable<System.String> Keys {get;}
+  property System.Int32 Count {get;}
 type sealed class Fw.Rt.AI.Core.DecisionBudget
   ctor(System.Int32 limit)
   method System.Boolean TrySpend(System.Int32 amount = 1)
@@ -124,6 +151,27 @@ type interface Fw.Rt.AI.Environment.IGameEnvironment<TState,TObservation,TAction
   method TState Clone(TState state)
   method TState Reset(System.Int32 seed)
   property Fw.Rt.AI.Environment.GameEnvironmentSpec Spec {get;}
+type interface Fw.Rt.AI.Environment.IParallelGameEnvironment<TState,TObservation,TAction>
+  method Fw.Rt.AI.Environment.GameEpisodeResult Result(TState state)
+  method Fw.Rt.AI.Environment.ParallelActorView<TObservation,TAction> Observe(TState state, System.Int32 actor)
+  method Fw.Rt.AI.Environment.ParallelGameTransition<TState> Step(TState state, System.Collections.Generic.IReadOnlyDictionary<System.Int32,TAction> actions)
+  method System.Collections.Generic.IReadOnlyList<System.Int32> ActiveActors(TState state)
+  method System.String StateKey(TState state)
+  method TState Reset(System.Int32 seed)
+  property Fw.Rt.AI.Environment.GameEnvironmentSpec Spec {get;}
+type sealed class Fw.Rt.AI.Environment.ParallelActorView<TObservation,TAction>
+  ctor(System.Int32 actor, TObservation observation, System.Collections.Generic.IEnumerable<TAction> legalActions)
+  property System.Collections.Generic.IReadOnlyList<TAction> LegalActions {get;}
+  property System.Int32 Actor {get;}
+  property TObservation Observation {get;}
+type static class Fw.Rt.AI.Environment.ParallelEnvironmentGuard
+  static method System.Void ValidateActions<TAction>(System.Collections.Generic.IReadOnlyList<System.Int32> actors, System.Collections.Generic.IReadOnlyDictionary<System.Int32,TAction> actions)
+  static method System.Void ValidateActors(System.Collections.Generic.IReadOnlyList<System.Int32> actors, Fw.Rt.AI.Environment.GameEnvironmentSpec spec)
+type sealed class Fw.Rt.AI.Environment.ParallelGameTransition<TState>
+  ctor(TState state, System.Collections.Generic.IEnumerable<System.Double> rewards, Fw.Rt.AI.Environment.GameEpisodeResult result)
+  property Fw.Rt.AI.Environment.GameEpisodeResult Result {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> Rewards {get;}
+  property TState State {get;}
 type sealed class Fw.Rt.AI.Evaluation.EvaluationAccumulator
   ctor(System.Int32 actor = 0, System.Double successThreshold = 0.5, System.Double failureThreshold = -0.5)
   method Fw.Rt.AI.Evaluation.EvaluationSummary Snapshot()
@@ -141,6 +189,124 @@ type sealed class Fw.Rt.AI.Evaluation.EvaluationSummary
   property System.Int32 Failures {get;}
   property System.Int32 Successes {get;}
   property System.Int32 Truncated {get;}
+type sealed class Fw.Rt.AI.Evaluation.LeaguePayoff : System.IEquatable<Fw.Rt.AI.Evaluation.LeaguePayoff>
+  ctor(System.Int32 Games, System.Double Mean, System.Double Wins, System.Double Draws, System.Double Losses)
+  method Fw.Rt.AI.Evaluation.LeaguePayoff <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Evaluation.LeaguePayoff other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32 Games, out System.Double Mean, out System.Double Wins, out System.Double Draws, out System.Double Losses)
+  property System.Double Draws {get;init;}
+  property System.Double Losses {get;init;}
+  property System.Double Mean {get;init;}
+  property System.Double Wins {get;init;}
+  property System.Int32 Games {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Evaluation.LeaguePayoff left, Fw.Rt.AI.Evaluation.LeaguePayoff right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Evaluation.LeaguePayoff left, Fw.Rt.AI.Evaluation.LeaguePayoff right)
+type sealed class Fw.Rt.AI.Evaluation.ZeroSumLeague
+  ctor()
+  method Fw.Rt.AI.Evaluation.LeaguePayoff Get(System.String first, System.String second)
+  method System.Collections.Generic.IReadOnlyDictionary<System.String,System.Double> MetaStrategy(System.Collections.Generic.IEnumerable<System.String> modelIds, System.Int32 iterations = 2000)
+  method System.String SampleOpponent(System.Collections.Generic.IReadOnlyDictionary<System.String,System.Double> strategy, Fw.Rt.Randomness.DeterministicRandomStream random)
+  method System.Void Add(System.String first, System.String second, System.Double firstPayoff)
+type sealed class Fw.Rt.AI.Graph.DecisionAssets
+  method Fw.Rt.AI.Graph.DecisionGraph BuildPlan(System.String json, System.String source = "plan.json")
+  method Fw.Rt.AI.Graph.DecisionGraph BuildState(System.String json, System.String source = "state.json")
+  method Fw.Rt.AI.Graph.DecisionGraph BuildUtility(System.String json, System.String source = "goal.json")
+  method Fw.Rt.AI.Graph.PlanGraph Plan(System.String json, System.String source = "plan.json")
+  method Fw.Rt.AI.Graph.StateProgram State(System.String json, System.String source = "state.json")
+  method Fw.Rt.AI.Graph.UtilityProgram Utility(System.String json, System.String source = "goal.json")
+  property System.Collections.Generic.IReadOnlyCollection<System.String> Conditions {get;}
+  property System.Collections.Generic.IReadOnlyCollection<System.String> Trees {get;}
+  static method Fw.Rt.AI.Graph.DecisionAssets Parse(System.String conditionsJson, System.Collections.Generic.IReadOnlyDictionary<System.String,System.String> treeJson, System.String source = "condition.json")
+type sealed class Fw.Rt.AI.Graph.DecisionExpression
+  ctor(Fw.Rt.AI.Graph.DecisionGraph graph)
+  method System.Boolean Boolean(System.Int32 nodeId, Fw.Rt.AI.Core.Blackboard blackboard, Fw.Rt.AI.Core.DecisionScope scope)
+  method System.Double Number(System.Int32 nodeId, Fw.Rt.AI.Core.Blackboard blackboard, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.Graph.DecisionGraph
+  method Fw.Rt.AI.Graph.DecisionGraphNode Input(System.Int32 nodeId, System.String port, System.Boolean required = true)
+  method Fw.Rt.AI.Graph.DecisionGraphNode Node(System.Int32 id)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Graph.DecisionGraphNode> Children(System.Int32 nodeId, System.String port)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Graph.DecisionGraphNode> NodesOfType(System.String type)
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Graph.DecisionGraphEdge> Edges {get;}
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Graph.DecisionGraphNode> Nodes {get;}
+  property System.String Id {get;}
+  static method Fw.Rt.AI.Graph.DecisionGraph Compose(System.String id, System.Collections.Generic.IEnumerable<Fw.Rt.AI.Graph.DecisionGraph> fragments)
+  static method Fw.Rt.AI.Graph.DecisionGraph Parse(System.String json, System.String source = "decision.json")
+type sealed class Fw.Rt.AI.Graph.DecisionGraphBudgetException : Fw.Rt.AI.Graph.DecisionGraphException
+  ctor()
+type sealed class Fw.Rt.AI.Graph.DecisionGraphEdge : System.IEquatable<Fw.Rt.AI.Graph.DecisionGraphEdge>
+  ctor(System.String Id, System.Int32 FromNode, System.String FromPort, System.Int32 ToNode, System.String ToPort)
+  method Fw.Rt.AI.Graph.DecisionGraphEdge <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Graph.DecisionGraphEdge other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String Id, out System.Int32 FromNode, out System.String FromPort, out System.Int32 ToNode, out System.String ToPort)
+  property System.Int32 FromNode {get;init;}
+  property System.Int32 ToNode {get;init;}
+  property System.String FromPort {get;init;}
+  property System.String Id {get;init;}
+  property System.String ToPort {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Graph.DecisionGraphEdge left, Fw.Rt.AI.Graph.DecisionGraphEdge right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Graph.DecisionGraphEdge left, Fw.Rt.AI.Graph.DecisionGraphEdge right)
+type class Fw.Rt.AI.Graph.DecisionGraphException : System.Exception
+  ctor(System.String message)
+  ctor(System.String message, System.Exception innerException)
+type sealed class Fw.Rt.AI.Graph.DecisionGraphNode : System.IEquatable<Fw.Rt.AI.Graph.DecisionGraphNode>
+  ctor(System.Int32 Id, System.String Type, System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Values)
+  method Fw.Rt.AI.Graph.DecisionGraphNode <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Graph.DecisionGraphNode other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32 Id, out System.String Type, out System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Values)
+  property System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Values {get;init;}
+  property System.Int32 Id {get;init;}
+  property System.String Type {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Graph.DecisionGraphNode left, Fw.Rt.AI.Graph.DecisionGraphNode right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Graph.DecisionGraphNode left, Fw.Rt.AI.Graph.DecisionGraphNode right)
+type sealed class Fw.Rt.AI.Graph.DecisionResult : System.IEquatable<Fw.Rt.AI.Graph.DecisionResult>
+  ctor(System.String Active, Fw.Rt.AI.Behavior.BehaviorStatus Status)
+  method Fw.Rt.AI.Graph.DecisionResult <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Graph.DecisionResult other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String Active, out Fw.Rt.AI.Behavior.BehaviorStatus Status)
+  property Fw.Rt.AI.Behavior.BehaviorStatus Status {get;init;}
+  property System.String Active {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Graph.DecisionResult left, Fw.Rt.AI.Graph.DecisionResult right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Graph.DecisionResult left, Fw.Rt.AI.Graph.DecisionResult right)
+type sealed class Fw.Rt.AI.Graph.DecisionSession
+  ctor()
+  method Fw.Rt.AI.Graph.DecisionSession Clone()
+  method System.Void CopyFrom(Fw.Rt.AI.Graph.DecisionSession other)
+  method System.Void Reset()
+  method System.Void ResetBehavior(System.String owner)
+  property Fw.Rt.AI.Behavior.BehaviorSession Behavior {get;}
+  property Fw.Rt.AI.State.StateTreeSession State {get;}
+  property System.String BehaviorOwner {get;set;}
+  property System.String ChoiceId {get;set;}
+type interface Fw.Rt.AI.Graph.ITaskHost
+  method Fw.Rt.AI.Behavior.BehaviorStatus Tick(System.String task, System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> parameters, Fw.Rt.AI.Core.Blackboard blackboard, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.Graph.PlanGraph
+  ctor(Fw.Rt.AI.Graph.DecisionGraph graph, System.String rootName = "")
+  method Fw.Rt.AI.Plan.PlanResult<System.String> Complete(System.Collections.Generic.IEnumerable<System.String> facts, System.String goal, Fw.Rt.AI.Core.DecisionScope scope)
+  method Fw.Rt.AI.Plan.PlanSearch<System.String> Begin(System.Collections.Generic.IEnumerable<System.String> facts, System.String goal)
+  property System.Collections.Generic.IReadOnlyCollection<System.String> Actions {get;}
+  property System.Collections.Generic.IReadOnlyCollection<System.String> Goals {get;}
+type sealed class Fw.Rt.AI.Graph.StateProgram
+  ctor(Fw.Rt.AI.Graph.DecisionGraph graph, System.String rootName = "")
+  method Fw.Rt.AI.Graph.DecisionResult Tick(Fw.Rt.AI.Core.Blackboard blackboard, Fw.Rt.AI.Graph.DecisionSession session, Fw.Rt.AI.Graph.ITaskHost host, Fw.Rt.AI.Core.DecisionScope scope)
+  property System.Collections.Generic.IReadOnlyCollection<System.String> States {get;}
+type sealed class Fw.Rt.AI.Graph.UtilityProgram
+  ctor(Fw.Rt.AI.Graph.DecisionGraph graph, System.String rootName = "")
+  method Fw.Rt.AI.Graph.DecisionResult Tick(Fw.Rt.AI.Core.Blackboard blackboard, Fw.Rt.AI.Graph.DecisionSession session, Fw.Rt.AI.Graph.ITaskHost host, Fw.Rt.AI.Core.DecisionScope scope, System.Boolean reselect = true)
+  method Fw.Rt.AI.Graph.DecisionResult TickGoal(System.String goal, Fw.Rt.AI.Core.Blackboard blackboard, Fw.Rt.AI.Graph.DecisionSession session, Fw.Rt.AI.Graph.ITaskHost host, Fw.Rt.AI.Core.DecisionScope scope)
+  method System.Boolean IsAvailable(System.String goal, Fw.Rt.AI.Core.Blackboard blackboard, Fw.Rt.AI.Core.DecisionScope scope)
+  property System.Collections.Generic.IReadOnlyCollection<System.String> Goals {get;}
 type sealed class Fw.Rt.AI.Model.ActionPrior<TAction>
   ctor(TAction action, System.Double prior)
   property System.Double Prior {get;}
@@ -154,6 +320,48 @@ type sealed class Fw.Rt.AI.Model.DelegatePolicyValueFeatureEncoder<TObservation,
 type sealed class Fw.Rt.AI.Model.DelegatePolicyValueModel<TObservation,TAction> : Fw.Rt.AI.Model.IPolicyValueModel<TObservation,TAction>
   ctor(System.Func<TObservation,System.Int32,System.Collections.Generic.IReadOnlyList<TAction>,Fw.Rt.AI.Model.PolicyValuePrediction<TAction>> predict)
   method Fw.Rt.AI.Model.PolicyValuePrediction<TAction> Predict(TObservation observation, System.Int32 actor, System.Collections.Generic.IReadOnlyList<TAction> legalActions)
+type sealed class Fw.Rt.AI.Model.DenseActorCriticCheckpoint
+  const System.Int32 CurrentVersion = 1
+  ctor(System.Int32 version, System.String schemaId, System.Int32 inputCount, System.Int32 hiddenCount, System.Int32 actionCount, System.Collections.Generic.IEnumerable<System.Double> inputWeights, System.Collections.Generic.IEnumerable<System.Double> hiddenBias, System.Collections.Generic.IEnumerable<System.Double> policyWeights, System.Collections.Generic.IEnumerable<System.Double> policyBias, System.Collections.Generic.IEnumerable<System.Double> valueWeights, System.Double valueBias)
+  method System.String ToJson()
+  property System.Collections.Generic.IReadOnlyList<System.Double> HiddenBias {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> InputWeights {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> PolicyBias {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> PolicyWeights {get;}
+  property System.Collections.Generic.IReadOnlyList<System.Double> ValueWeights {get;}
+  property System.Double ValueBias {get;}
+  property System.Int32 ActionCount {get;}
+  property System.Int32 HiddenCount {get;}
+  property System.Int32 InputCount {get;}
+  property System.Int32 Version {get;}
+  property System.String SchemaId {get;}
+  static method Fw.Rt.AI.Model.DenseActorCriticCheckpoint FromJson(System.String json)
+type sealed class Fw.Rt.AI.Model.DenseActorCriticModel
+  ctor(Fw.Rt.AI.Model.DenseActorCriticCheckpoint checkpoint)
+  ctor(System.String schemaId, System.Int32 inputCount, System.Int32 hiddenCount, System.Int32 actionCount, System.Int32 seed = 1)
+  method Fw.Rt.AI.Model.DenseActorCriticCheckpoint ExportCheckpoint()
+  method Fw.Rt.AI.Model.DenseActorCriticPrediction Predict(System.Collections.Generic.IReadOnlyList<System.Double> observation, System.Collections.Generic.IReadOnlyList<System.Boolean> actionMask = null, System.Double temperature = 1)
+  method Fw.Rt.AI.Model.DensePolicyChoice Choose(System.Collections.Generic.IReadOnlyList<System.Double> observation, System.Collections.Generic.IReadOnlyList<System.Boolean> actionMask, Fw.Rt.Randomness.DeterministicRandomStream random, System.Boolean sample = true, System.Double temperature = 1)
+  property System.Int32 ActionCount {get;}
+  property System.Int32 HiddenCount {get;}
+  property System.Int32 InputCount {get;}
+  property System.String SchemaId {get;}
+type sealed class Fw.Rt.AI.Model.DenseActorCriticPrediction
+  ctor(System.Collections.Generic.IEnumerable<System.Double> probabilities, System.Double value)
+  property System.Collections.Generic.IReadOnlyList<System.Double> Probabilities {get;}
+  property System.Double Value {get;}
+type struct Fw.Rt.AI.Model.DensePolicyChoice : System.IEquatable<Fw.Rt.AI.Model.DensePolicyChoice>
+  ctor(System.Int32 Action, System.Double Probability, System.Double Value)
+  method System.Boolean Equals(Fw.Rt.AI.Model.DensePolicyChoice other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32 Action, out System.Double Probability, out System.Double Value)
+  property System.Double Probability {get;init;}
+  property System.Double Value {get;init;}
+  property System.Int32 Action {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Model.DensePolicyChoice left, Fw.Rt.AI.Model.DensePolicyChoice right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Model.DensePolicyChoice left, Fw.Rt.AI.Model.DensePolicyChoice right)
 type interface Fw.Rt.AI.Model.IPolicyValueFeatureEncoder<TObservation,TAction>
   method System.Collections.Generic.IReadOnlyList<System.Double> EncodePolicy(TObservation observation, System.Int32 actor, TAction action)
   method System.Collections.Generic.IReadOnlyList<System.Double> EncodeValue(TObservation observation, System.Int32 observer, System.Int32 player)
@@ -361,6 +569,104 @@ type sealed class Fw.Rt.AI.Search.PuctSearchResult<TAction>
 type enum Fw.Rt.AI.Search.PuctSearchStatus : System.Int32
   const Fw.Rt.AI.Search.PuctSearchStatus Complete = 1
   const Fw.Rt.AI.Search.PuctSearchStatus Searching = 0
+type sealed class Fw.Rt.AI.State.StateNode<TContext>
+  ctor(System.String id, System.String parent = "", System.Boolean initial = false, System.Int32 order = 0, System.Func<TContext,Fw.Rt.AI.State.StateTreeSession,System.Boolean> canEnter = null, System.Func<TContext,Fw.Rt.AI.State.StateTreeSession,Fw.Rt.AI.Core.DecisionScope,Fw.Rt.AI.Behavior.BehaviorStatus> task = null, System.Collections.Generic.IEnumerable<Fw.Rt.AI.State.StateTransition<TContext>> transitions = null)
+  property System.Boolean Initial {get;}
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.State.StateTransition<TContext>> Transitions {get;}
+  property System.Func<TContext,Fw.Rt.AI.State.StateTreeSession,Fw.Rt.AI.Core.DecisionScope,Fw.Rt.AI.Behavior.BehaviorStatus> Task {get;}
+  property System.Func<TContext,Fw.Rt.AI.State.StateTreeSession,System.Boolean> CanEnter {get;}
+  property System.Int32 Order {get;}
+  property System.String Id {get;}
+  property System.String Parent {get;}
+type sealed class Fw.Rt.AI.State.StateTransition<TContext> : System.IEquatable<Fw.Rt.AI.State.StateTransition<TContext>>
+  ctor(System.String Target, Fw.Rt.AI.State.StateTransitionTrigger Trigger, System.Func<TContext,Fw.Rt.AI.State.StateTreeSession,System.Boolean> Condition = null, System.Int32 Priority = 0)
+  method Fw.Rt.AI.State.StateTransition<TContext> <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.State.StateTransition<TContext> other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String Target, out Fw.Rt.AI.State.StateTransitionTrigger Trigger, out System.Func<TContext,Fw.Rt.AI.State.StateTreeSession,System.Boolean> Condition, out System.Int32 Priority)
+  property Fw.Rt.AI.State.StateTransitionTrigger Trigger {get;init;}
+  property System.Func<TContext,Fw.Rt.AI.State.StateTreeSession,System.Boolean> Condition {get;init;}
+  property System.Int32 Priority {get;init;}
+  property System.String Target {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.State.StateTransition<TContext> left, Fw.Rt.AI.State.StateTransition<TContext> right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.State.StateTransition<TContext> left, Fw.Rt.AI.State.StateTransition<TContext> right)
+type enum Fw.Rt.AI.State.StateTransitionTrigger : System.Int32
+  const Fw.Rt.AI.State.StateTransitionTrigger Failure = 2
+  const Fw.Rt.AI.State.StateTransitionTrigger Success = 1
+  const Fw.Rt.AI.State.StateTransitionTrigger Tick = 0
+type sealed class Fw.Rt.AI.State.StateTree<TContext>
+  ctor(System.Collections.Generic.IEnumerable<Fw.Rt.AI.State.StateNode<TContext>> states)
+  method Fw.Rt.AI.State.StateTreeResult Tick(TContext context, Fw.Rt.AI.State.StateTreeSession session, Fw.Rt.AI.Core.DecisionScope scope)
+type sealed class Fw.Rt.AI.State.StateTreeResult : System.IEquatable<Fw.Rt.AI.State.StateTreeResult>
+  ctor(System.String ActiveState, Fw.Rt.AI.Behavior.BehaviorStatus Status, System.Boolean Changed)
+  method Fw.Rt.AI.State.StateTreeResult <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.State.StateTreeResult other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String ActiveState, out Fw.Rt.AI.Behavior.BehaviorStatus Status, out System.Boolean Changed)
+  property Fw.Rt.AI.Behavior.BehaviorStatus Status {get;init;}
+  property System.Boolean Changed {get;init;}
+  property System.String ActiveState {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.State.StateTreeResult left, Fw.Rt.AI.State.StateTreeResult right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.State.StateTreeResult left, Fw.Rt.AI.State.StateTreeResult right)
+type sealed class Fw.Rt.AI.State.StateTreeSession
+  ctor()
+  method Fw.Rt.AI.State.StateTreeSession Clone()
+  method System.Void CopyFrom(Fw.Rt.AI.State.StateTreeSession other)
+  method System.Void Reset()
+  property System.Int32 StateTicks {get;}
+  property System.String ActiveState {get;}
+type sealed class Fw.Rt.AI.Training.DenseImitationSample
+  ctor(System.Collections.Generic.IEnumerable<System.Double> observation, System.Collections.Generic.IEnumerable<System.Boolean> actionMask, System.Int32 action, System.Double weight = 1)
+  property System.Boolean[] ActionMask {get;}
+  property System.Double Weight {get;}
+  property System.Double[] Observation {get;}
+  property System.Int32 Action {get;}
+type sealed class Fw.Rt.AI.Training.DensePpoSample
+  ctor(System.Collections.Generic.IEnumerable<System.Double> observation, System.Collections.Generic.IEnumerable<System.Boolean> actionMask, System.Int32 action, System.Double oldLogProbability, System.Double advantage, System.Double valueTarget, System.Double weight = 1)
+  property System.Boolean[] ActionMask {get;}
+  property System.Double Advantage {get;}
+  property System.Double OldLogProbability {get;}
+  property System.Double ValueTarget {get;}
+  property System.Double Weight {get;}
+  property System.Double[] Observation {get;}
+  property System.Int32 Action {get;}
+type sealed class Fw.Rt.AI.Training.DensePpoTrainer
+  ctor(Fw.Rt.AI.Model.DenseActorCriticModel model, Fw.Rt.AI.Training.DensePpoTrainingOptions options = null)
+  method Fw.Rt.AI.Training.DenseTrainingResult Train(System.Collections.Generic.IEnumerable<Fw.Rt.AI.Training.DensePpoSample> samples, Fw.Rt.Randomness.DeterministicRandomStream random)
+  method Fw.Rt.AI.Training.DenseTrainingResult TrainImitation(System.Collections.Generic.IEnumerable<Fw.Rt.AI.Training.DenseImitationSample> samples, Fw.Rt.Randomness.DeterministicRandomStream random, System.Int32 epochs = 1)
+type sealed class Fw.Rt.AI.Training.DensePpoTrainingOptions
+  ctor(System.Int32 epochs = 4, System.Int32 batchSize = 128, System.Double learningRate = 0.0003, System.Double clipRatio = 0.2, System.Double valueCoefficient = 0.5, System.Double entropyCoefficient = 0.01, System.Double gradientClip = 1, System.Double adamBeta1 = 0.9, System.Double adamBeta2 = 0.999, System.Double adamEpsilon = 1E-08, System.Double targetKl = 0)
+  property System.Double AdamBeta1 {get;}
+  property System.Double AdamBeta2 {get;}
+  property System.Double AdamEpsilon {get;}
+  property System.Double ClipRatio {get;}
+  property System.Double EntropyCoefficient {get;}
+  property System.Double GradientClip {get;}
+  property System.Double LearningRate {get;}
+  property System.Double TargetKl {get;}
+  property System.Double ValueCoefficient {get;}
+  property System.Int32 BatchSize {get;}
+  property System.Int32 Epochs {get;}
+type sealed class Fw.Rt.AI.Training.DenseTrainingResult : System.IEquatable<Fw.Rt.AI.Training.DenseTrainingResult>
+  ctor(System.Int32 Samples, System.Int32 Updates, System.Double PolicyLoss, System.Double ValueLoss, System.Double Entropy, System.Double ApproximateKl)
+  method Fw.Rt.AI.Training.DenseTrainingResult <Clone>$()
+  method System.Boolean Equals(Fw.Rt.AI.Training.DenseTrainingResult other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32 Samples, out System.Int32 Updates, out System.Double PolicyLoss, out System.Double ValueLoss, out System.Double Entropy, out System.Double ApproximateKl)
+  property System.Double ApproximateKl {get;init;}
+  property System.Double Entropy {get;init;}
+  property System.Double PolicyLoss {get;init;}
+  property System.Double ValueLoss {get;init;}
+  property System.Int32 Samples {get;init;}
+  property System.Int32 Updates {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.AI.Training.DenseTrainingResult left, Fw.Rt.AI.Training.DenseTrainingResult right)
+  static method System.Boolean op_Inequality(Fw.Rt.AI.Training.DenseTrainingResult left, Fw.Rt.AI.Training.DenseTrainingResult right)
 type static class Fw.Rt.AI.Training.LinearPolicyValueTrainer
   static method Fw.Rt.AI.Training.LinearPolicyValueTrainingResult Train<TObservation,TAction>(Fw.Rt.AI.Model.LinearPolicyValueModel<TObservation,TAction> model, System.Collections.Generic.IEnumerable<Fw.Rt.AI.Training.PolicyValueSample<TObservation,TAction>> samples, Fw.Rt.AI.Training.LinearPolicyValueTrainingOptions options = null)
 type sealed class Fw.Rt.AI.Training.LinearPolicyValueTrainingOptions
@@ -421,13 +727,14 @@ type sealed class Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> : System.IEqu
   static method System.Boolean op_Equality(Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> left, Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> right)
   static method System.Boolean op_Inequality(Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> left, Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> right)
 type sealed class Fw.Rt.AI.Utility.UtilityResult<TChoice> : System.IEquatable<Fw.Rt.AI.Utility.UtilityResult<TChoice>>
-  ctor(System.Boolean HasChoice, System.String Id, TChoice Choice, System.Double Score, System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Utility.UtilityScore> Scores)
+  ctor(System.Boolean HasChoice, System.String Id, TChoice Choice, System.Double Score, System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Utility.UtilityScore> Scores, System.Boolean Complete = true)
   method Fw.Rt.AI.Utility.UtilityResult<TChoice> <Clone>$()
   method System.Boolean Equals(Fw.Rt.AI.Utility.UtilityResult<TChoice> other)
   method System.Boolean Equals(System.Object obj)
   method System.Int32 GetHashCode()
   method System.String ToString()
-  method System.Void Deconstruct(out System.Boolean HasChoice, out System.String Id, out TChoice Choice, out System.Double Score, out System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Utility.UtilityScore> Scores)
+  method System.Void Deconstruct(out System.Boolean HasChoice, out System.String Id, out TChoice Choice, out System.Double Score, out System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Utility.UtilityScore> Scores, out System.Boolean Complete)
+  property System.Boolean Complete {get;init;}
   property System.Boolean HasChoice {get;init;}
   property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Utility.UtilityScore> Scores {get;init;}
   property System.Double Score {get;init;}
@@ -453,6 +760,120 @@ type sealed class Fw.Rt.AI.Utility.UtilitySelector<TContext,TChoice>
   method System.Boolean Remove(System.String id)
   method System.Void Add(Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice> option)
   property System.Collections.Generic.IReadOnlyList<Fw.Rt.AI.Utility.UtilityOption<TContext,TChoice>> Options {get;}
+type static class Fw.Rt.Animation.ProceduralActionSampler
+  const System.Int32 DefaultMaxSamplesPerTick = 4
+  const System.Single DefaultMaxSampleAngleDegrees = 10
+  const System.Single DefaultMaxSampleDistance = 0.12
+  static method Fw.Rt.Animation.ProceduralPose Sample(System.Collections.Generic.IReadOnlyList<Fw.Rt.Animation.ProceduralPoseKey> keys, System.Single timelineTick)
+  static method System.Int32 RequiredSubsamples(Fw.Rt.Animation.ProceduralPose from, Fw.Rt.Animation.ProceduralPose to, System.Single maxAngleDegrees = 10, System.Single maxDistance = 0.12, System.Int32 maxSamples = 4)
+  static method System.Numerics.Quaternion FromEulerYxz(System.Numerics.Vector3 rotationDegrees)
+  static method System.Numerics.Vector3 RotateLocal(System.Numerics.Vector3 value, System.Numerics.Quaternion rotation)
+  static method System.Numerics.Vector3 RotateLocalYxz(System.Numerics.Vector3 value, System.Numerics.Vector3 rotationDegrees)
+  static method System.Single Ease(System.Single ratio, Fw.Rt.Animation.ProceduralEasing easing)
+type enum Fw.Rt.Animation.ProceduralEasing : System.Int32
+  const Fw.Rt.Animation.ProceduralEasing EaseInCubic = 4
+  const Fw.Rt.Animation.ProceduralEasing EaseInQuint = 5
+  const Fw.Rt.Animation.ProceduralEasing EaseOutBack = 7
+  const Fw.Rt.Animation.ProceduralEasing EaseOutCubic = 6
+  const Fw.Rt.Animation.ProceduralEasing In = 2
+  const Fw.Rt.Animation.ProceduralEasing Linear = 0
+  const Fw.Rt.Animation.ProceduralEasing Out = 3
+  const Fw.Rt.Animation.ProceduralEasing Smooth = 1
+type struct Fw.Rt.Animation.ProceduralPose : System.IEquatable<Fw.Rt.Animation.ProceduralPose>
+  ctor(System.Numerics.Vector3 Position, System.Numerics.Quaternion Rotation, System.Numerics.Vector3 Scale)
+  method System.Boolean Equals(Fw.Rt.Animation.ProceduralPose other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Numerics.Vector3 Position, out System.Numerics.Quaternion Rotation, out System.Numerics.Vector3 Scale)
+  property Fw.Rt.Animation.ProceduralPose Identity {get;}
+  property System.Numerics.Quaternion Rotation {get;init;}
+  property System.Numerics.Vector3 Position {get;init;}
+  property System.Numerics.Vector3 Scale {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Animation.ProceduralPose left, Fw.Rt.Animation.ProceduralPose right)
+  static method System.Boolean op_Inequality(Fw.Rt.Animation.ProceduralPose left, Fw.Rt.Animation.ProceduralPose right)
+type struct Fw.Rt.Animation.ProceduralPoseKey : System.IEquatable<Fw.Rt.Animation.ProceduralPoseKey>
+  ctor(System.Single Tick, System.Numerics.Vector3 Position, System.Numerics.Vector3 RotationDegrees, System.Numerics.Vector3 Scale, Fw.Rt.Animation.ProceduralEasing Easing = Smooth)
+  method System.Boolean Equals(Fw.Rt.Animation.ProceduralPoseKey other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Single Tick, out System.Numerics.Vector3 Position, out System.Numerics.Vector3 RotationDegrees, out System.Numerics.Vector3 Scale, out Fw.Rt.Animation.ProceduralEasing Easing)
+  property Fw.Rt.Animation.ProceduralEasing Easing {get;init;}
+  property System.Numerics.Vector3 Position {get;init;}
+  property System.Numerics.Vector3 RotationDegrees {get;init;}
+  property System.Numerics.Vector3 Scale {get;init;}
+  property System.Single Tick {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Animation.ProceduralPoseKey left, Fw.Rt.Animation.ProceduralPoseKey right)
+  static method System.Boolean op_Inequality(Fw.Rt.Animation.ProceduralPoseKey left, Fw.Rt.Animation.ProceduralPoseKey right)
+type static class Fw.Rt.Archives.FrameArchive
+  static method Fw.Rt.Archives.FrameArchiveReader Open(System.String path, Fw.Rt.Archives.FrameArchiveOptions options = null)
+  static method Fw.Rt.Archives.FrameArchiveRecovery Recover(System.String path, Fw.Rt.Archives.FrameArchiveOptions options = null)
+  static method Fw.Rt.Archives.FrameArchiveWriter Create(System.String path, System.ReadOnlySpan<System.Byte> content, Fw.Rt.Archives.FrameArchiveOptions options = null)
+type sealed class Fw.Rt.Archives.FrameArchiveFrame : System.IEquatable<Fw.Rt.Archives.FrameArchiveFrame>
+  ctor(System.Int64 Tick, System.Boolean IsCheckpoint, System.Byte[] Payload)
+  method Fw.Rt.Archives.FrameArchiveFrame <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Archives.FrameArchiveFrame other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int64 Tick, out System.Boolean IsCheckpoint, out System.Byte[] Payload)
+  property System.Boolean IsCheckpoint {get;init;}
+  property System.Byte[] Payload {get;init;}
+  property System.Int64 Tick {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Archives.FrameArchiveFrame left, Fw.Rt.Archives.FrameArchiveFrame right)
+  static method System.Boolean op_Inequality(Fw.Rt.Archives.FrameArchiveFrame left, Fw.Rt.Archives.FrameArchiveFrame right)
+type sealed class Fw.Rt.Archives.FrameArchiveOptions : System.IEquatable<Fw.Rt.Archives.FrameArchiveOptions>
+  ctor(System.Int32 CompressionThresholdBytes = 900, System.Int32 MaxContentBytes = 8388608, System.Int32 MaxFrameBytes = 8388608, System.Int32 MaxEncodedBytes = 8388608, System.Int32 FlushIntervalFrames = 30)
+  method Fw.Rt.Archives.FrameArchiveOptions <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Archives.FrameArchiveOptions other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32 CompressionThresholdBytes, out System.Int32 MaxContentBytes, out System.Int32 MaxFrameBytes, out System.Int32 MaxEncodedBytes, out System.Int32 FlushIntervalFrames)
+  property System.Int32 CompressionThresholdBytes {get;init;}
+  property System.Int32 FlushIntervalFrames {get;init;}
+  property System.Int32 MaxContentBytes {get;init;}
+  property System.Int32 MaxEncodedBytes {get;init;}
+  property System.Int32 MaxFrameBytes {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Archives.FrameArchiveOptions left, Fw.Rt.Archives.FrameArchiveOptions right)
+  static method System.Boolean op_Inequality(Fw.Rt.Archives.FrameArchiveOptions left, Fw.Rt.Archives.FrameArchiveOptions right)
+type sealed class Fw.Rt.Archives.FrameArchiveReader : System.IDisposable
+  method Fw.Rt.Archives.FrameArchiveFrame ReadAt(System.Int32 index)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Archives.FrameArchiveFrame> ReadRange(System.Int32 startIndex, System.Int32 count)
+  method System.Int32 FindCheckpointIndex(System.Int64 tick)
+  method System.Int32 FindFrameIndex(System.Int64 tick)
+  method System.Void Dispose()
+  property System.Byte[] Content {get;}
+  property System.Int32 CheckpointCount {get;}
+  property System.Int32 FrameCount {get;}
+  property System.Int64 FirstTick {get;}
+  property System.Int64 LastTick {get;}
+  property System.String Path {get;}
+type sealed class Fw.Rt.Archives.FrameArchiveRecovery : System.IEquatable<Fw.Rt.Archives.FrameArchiveRecovery>
+  ctor(System.Int64 ValidLength, System.Int32 FrameCount, System.Int64 LastTick, System.Boolean Truncated)
+  method Fw.Rt.Archives.FrameArchiveRecovery <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Archives.FrameArchiveRecovery other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int64 ValidLength, out System.Int32 FrameCount, out System.Int64 LastTick, out System.Boolean Truncated)
+  property System.Boolean Truncated {get;init;}
+  property System.Int32 FrameCount {get;init;}
+  property System.Int64 LastTick {get;init;}
+  property System.Int64 ValidLength {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Archives.FrameArchiveRecovery left, Fw.Rt.Archives.FrameArchiveRecovery right)
+  static method System.Boolean op_Inequality(Fw.Rt.Archives.FrameArchiveRecovery left, Fw.Rt.Archives.FrameArchiveRecovery right)
+type sealed class Fw.Rt.Archives.FrameArchiveWriter : System.IDisposable
+  method System.String Complete()
+  method System.Void Append(System.Int64 tick, System.Boolean isCheckpoint, System.ReadOnlySpan<System.Byte> payload)
+  method System.Void Dispose()
+  method System.Void Flush()
+  property System.Boolean IsCompleted {get;}
+  property System.Int32 FrameCount {get;}
+  property System.Int64 LastTick {get;}
+  property System.String FinalPath {get;}
+  property System.String PartialPath {get;}
 type static class Fw.Rt.Bridge.WireFrame
   static method System.Boolean HasHeader(System.ReadOnlySpan<System.Byte> value)
   static method System.Byte[] Decode(System.ReadOnlySpan<System.Byte> frame, Fw.Rt.Bridge.WireFrameOptions options = null)
@@ -535,6 +956,227 @@ type enum Fw.Rt.Logging.LogLevel : System.Int32
   const Fw.Rt.Logging.LogLevel Error = 3
   const Fw.Rt.Logging.LogLevel Info = 1
   const Fw.Rt.Logging.LogLevel Warning = 2
+type interface Fw.Rt.Net.INetTransport : System.IDisposable
+  method Fw.Rt.Net.NetTransportSnapshot Snapshot()
+  method System.Boolean Disconnect(System.Net.IPEndPoint remoteEndPoint)
+  method System.Boolean Send(System.Net.IPEndPoint remoteEndPoint, System.ReadOnlySpan<System.Byte> payload, System.Byte channel, Fw.Rt.Net.NetDelivery delivery)
+  method System.Boolean SendToServer(System.ReadOnlySpan<System.Byte> payload, System.Byte channel, Fw.Rt.Net.NetDelivery delivery)
+  method System.Boolean SendUnconnected(System.Net.IPEndPoint remoteEndPoint, System.ReadOnlySpan<System.Byte> payload)
+  method System.Boolean StartClient(System.String host, System.Int32 port, Fw.Rt.Net.NetTransportOptions options = null)
+  method System.Boolean StartServer(System.Int32 port, Fw.Rt.Net.NetTransportOptions options = null)
+  method System.Boolean StartUnconnected(Fw.Rt.Net.NetTransportOptions options = null)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Net.NetReceivedMessage> Receive(System.Int32 maxMessages)
+  method System.Void Close()
+  property Fw.Rt.Net.NetTransportRole Role {get;}
+  property System.Boolean IsConnected {get;}
+  property System.Boolean IsRunning {get;}
+  property System.Net.IPEndPoint ServerEndPoint {get;}
+type sealed class Fw.Rt.Net.LiteNetTransport : Fw.Rt.Net.INetTransport, System.IDisposable
+  ctor()
+  method Fw.Rt.Net.NetTransportSnapshot Snapshot()
+  method System.Boolean Disconnect(System.Net.IPEndPoint remoteEndPoint)
+  method System.Boolean Send(System.Net.IPEndPoint remoteEndPoint, System.ReadOnlySpan<System.Byte> payload, System.Byte channel, Fw.Rt.Net.NetDelivery delivery)
+  method System.Boolean SendToServer(System.ReadOnlySpan<System.Byte> payload, System.Byte channel, Fw.Rt.Net.NetDelivery delivery)
+  method System.Boolean SendUnconnected(System.Net.IPEndPoint remoteEndPoint, System.ReadOnlySpan<System.Byte> payload)
+  method System.Boolean StartClient(System.String host, System.Int32 port, Fw.Rt.Net.NetTransportOptions options = null)
+  method System.Boolean StartServer(System.Int32 port, Fw.Rt.Net.NetTransportOptions options = null)
+  method System.Boolean StartUnconnected(Fw.Rt.Net.NetTransportOptions options = null)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Net.NetReceivedMessage> Receive(System.Int32 maxMessages)
+  method System.Void Close()
+  method System.Void Dispose()
+  property Fw.Rt.Net.NetTransportRole Role {get;}
+  property System.Boolean IsConnected {get;}
+  property System.Boolean IsRunning {get;}
+  property System.Net.IPEndPoint ServerEndPoint {get;}
+type sealed class Fw.Rt.Net.NetCommand : System.IEquatable<Fw.Rt.Net.NetCommand>
+  ctor(System.UInt64 Id, System.UInt32 ClientTick, System.Byte[] Payload, System.Int64 CreatedTimestamp, System.Int32 LifetimeMilliseconds)
+  method Fw.Rt.Net.NetCommand <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Net.NetCommand other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.UInt64 Id, out System.UInt32 ClientTick, out System.Byte[] Payload, out System.Int64 CreatedTimestamp, out System.Int32 LifetimeMilliseconds)
+  property System.Byte[] Payload {get;init;}
+  property System.Int32 LifetimeMilliseconds {get;init;}
+  property System.Int64 CreatedTimestamp {get;init;}
+  property System.UInt32 ClientTick {get;init;}
+  property System.UInt64 Id {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Net.NetCommand left, Fw.Rt.Net.NetCommand right)
+  static method System.Boolean op_Inequality(Fw.Rt.Net.NetCommand left, Fw.Rt.Net.NetCommand right)
+type sealed class Fw.Rt.Net.NetCommandJournal
+  ctor(System.Int32 capacity = 4096)
+  method System.Boolean Complete(Fw.Rt.Net.NetCommandReceipt receipt)
+  method System.Boolean TryAppend(System.UInt32 clientTick, System.ReadOnlySpan<System.Byte> payload, System.Int64 timestamp, System.Int32 lifetimeMilliseconds, out Fw.Rt.Net.NetCommand command)
+  method System.Boolean TryPeek(out Fw.Rt.Net.NetCommand command)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Net.NetCommand> Pending(System.Int32 maxCommands)
+  method System.Int32 CompleteThrough(System.UInt64 id)
+  method System.Void Reset(System.Boolean preservePending)
+  property System.Boolean IsStalled {get;}
+  property System.Int32 Capacity {get;}
+  property System.Int32 Count {get;}
+type sealed class Fw.Rt.Net.NetCommandLedger
+  ctor(System.Int32 capacity = 8192)
+  method Fw.Rt.Net.NetCommandReceipt Commit(System.UInt64 id, Fw.Rt.Net.NetCommandStatus status, System.Int64 authorityTick, System.String reason = "")
+  method System.Boolean TryGet(System.UInt64 id, out Fw.Rt.Net.NetCommandReceipt receipt)
+  method System.Void Clear()
+  property System.Int32 Count {get;}
+type sealed class Fw.Rt.Net.NetCommandReceipt : System.IEquatable<Fw.Rt.Net.NetCommandReceipt>
+  ctor(System.UInt64 Id, Fw.Rt.Net.NetCommandStatus Status, System.Int64 AuthorityTick, System.String Reason)
+  method Fw.Rt.Net.NetCommandReceipt <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Net.NetCommandReceipt other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.UInt64 Id, out Fw.Rt.Net.NetCommandStatus Status, out System.Int64 AuthorityTick, out System.String Reason)
+  property Fw.Rt.Net.NetCommandStatus Status {get;init;}
+  property System.Int64 AuthorityTick {get;init;}
+  property System.String Reason {get;init;}
+  property System.UInt64 Id {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Net.NetCommandReceipt left, Fw.Rt.Net.NetCommandReceipt right)
+  static method System.Boolean op_Inequality(Fw.Rt.Net.NetCommandReceipt left, Fw.Rt.Net.NetCommandReceipt right)
+type enum Fw.Rt.Net.NetCommandStatus : System.Int32
+  const Fw.Rt.Net.NetCommandStatus Applied = 0
+  const Fw.Rt.Net.NetCommandStatus Expired = 2
+  const Fw.Rt.Net.NetCommandStatus Rejected = 1
+type enum Fw.Rt.Net.NetDelivery : System.Int32
+  const Fw.Rt.Net.NetDelivery ReliableOrdered = 2
+  const Fw.Rt.Net.NetDelivery ReliableSequenced = 4
+  const Fw.Rt.Net.NetDelivery ReliableUnordered = 3
+  const Fw.Rt.Net.NetDelivery Unreliable = 0
+  const Fw.Rt.Net.NetDelivery UnreliableSequenced = 1
+type sealed class Fw.Rt.Net.NetFaultMessage<T> : System.IEquatable<Fw.Rt.Net.NetFaultMessage<T>>
+  ctor(System.Int64 DeliverAtMilliseconds, T Payload)
+  method Fw.Rt.Net.NetFaultMessage<T> <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Net.NetFaultMessage<T> other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int64 DeliverAtMilliseconds, out T Payload)
+  property System.Int64 DeliverAtMilliseconds {get;init;}
+  property T Payload {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Net.NetFaultMessage<T> left, Fw.Rt.Net.NetFaultMessage<T> right)
+  static method System.Boolean op_Inequality(Fw.Rt.Net.NetFaultMessage<T> left, Fw.Rt.Net.NetFaultMessage<T> right)
+type sealed class Fw.Rt.Net.NetFaultOptions : System.IEquatable<Fw.Rt.Net.NetFaultOptions>
+  ctor()
+  method Fw.Rt.Net.NetFaultOptions <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Net.NetFaultOptions other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  property System.Double Duplicate {get;init;}
+  property System.Double Loss {get;init;}
+  property System.Double Reorder {get;init;}
+  property System.Int32 MaximumDelayMilliseconds {get;init;}
+  property System.Int32 MinimumDelayMilliseconds {get;init;}
+  property System.Int32 Seed {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Net.NetFaultOptions left, Fw.Rt.Net.NetFaultOptions right)
+  static method System.Boolean op_Inequality(Fw.Rt.Net.NetFaultOptions left, Fw.Rt.Net.NetFaultOptions right)
+type sealed class Fw.Rt.Net.NetFaultSimulator<T>
+  ctor(Fw.Rt.Net.NetFaultOptions options)
+  method System.Collections.Generic.IReadOnlyList<T> Receive(System.Int64 nowMilliseconds, System.Int32 maxMessages = 2147483647)
+  method System.Void Enqueue(T payload, System.Int64 nowMilliseconds)
+  property System.Int32 PendingCount {get;}
+type sealed class Fw.Rt.Net.NetInputFrame<TState> : System.IEquatable<Fw.Rt.Net.NetInputFrame<TState>>
+  ctor(System.UInt32 Tick, TState State)
+  method Fw.Rt.Net.NetInputFrame<TState> <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Net.NetInputFrame<TState> other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.UInt32 Tick, out TState State)
+  property System.UInt32 Tick {get;init;}
+  property TState State {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Net.NetInputFrame<TState> left, Fw.Rt.Net.NetInputFrame<TState> right)
+  static method System.Boolean op_Inequality(Fw.Rt.Net.NetInputFrame<TState> left, Fw.Rt.Net.NetInputFrame<TState> right)
+type sealed class Fw.Rt.Net.NetInputHistory<TState>
+  ctor(System.Int32 capacity = 6)
+  method System.Boolean TryLatest(out Fw.Rt.Net.NetInputFrame<TState> frame)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Net.NetInputFrame<TState>> NewestFirst(System.Int32 maxFrames)
+  method System.Void Capture(System.UInt32 tick, TState state)
+  method System.Void Clear()
+  property System.Int32 Capacity {get;}
+  property System.Int32 Count {get;}
+type sealed class Fw.Rt.Net.NetReceivedMessage : System.IEquatable<Fw.Rt.Net.NetReceivedMessage>
+  ctor(System.Net.IPEndPoint RemoteEndPoint, System.Byte[] Payload, System.Byte Channel, Fw.Rt.Net.NetDelivery Delivery, System.Boolean Connected)
+  method Fw.Rt.Net.NetReceivedMessage <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Net.NetReceivedMessage other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Net.IPEndPoint RemoteEndPoint, out System.Byte[] Payload, out System.Byte Channel, out Fw.Rt.Net.NetDelivery Delivery, out System.Boolean Connected)
+  property Fw.Rt.Net.NetDelivery Delivery {get;init;}
+  property System.Boolean Connected {get;init;}
+  property System.Byte Channel {get;init;}
+  property System.Byte[] Payload {get;init;}
+  property System.Net.IPEndPoint RemoteEndPoint {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Net.NetReceivedMessage left, Fw.Rt.Net.NetReceivedMessage right)
+  static method System.Boolean op_Inequality(Fw.Rt.Net.NetReceivedMessage left, Fw.Rt.Net.NetReceivedMessage right)
+type sealed class Fw.Rt.Net.NetTransportOptions : System.IEquatable<Fw.Rt.Net.NetTransportOptions>
+  ctor()
+  method Fw.Rt.Net.NetTransportOptions <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Net.NetTransportOptions other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  property System.Int32 DisconnectTimeoutMilliseconds {get;init;}
+  property System.Int32 MaxConnections {get;init;}
+  property System.Int32 MaxQueuedMessages {get;init;}
+  property System.Int32 PollIntervalMilliseconds {get;init;}
+  property System.String ConnectionKey {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Net.NetTransportOptions left, Fw.Rt.Net.NetTransportOptions right)
+  static method System.Boolean op_Inequality(Fw.Rt.Net.NetTransportOptions left, Fw.Rt.Net.NetTransportOptions right)
+type enum Fw.Rt.Net.NetTransportRole : System.Int32
+  const Fw.Rt.Net.NetTransportRole Client = 1
+  const Fw.Rt.Net.NetTransportRole None = 0
+  const Fw.Rt.Net.NetTransportRole Server = 2
+  const Fw.Rt.Net.NetTransportRole Unconnected = 3
+type sealed class Fw.Rt.Net.NetTransportSnapshot : System.IEquatable<Fw.Rt.Net.NetTransportSnapshot>
+  ctor(Fw.Rt.Net.NetTransportRole Role, System.Boolean Running, System.Boolean Connected, System.Int32 Peers, System.Int64 SentMessages, System.Int64 SentBytes, System.Int64 ReceivedMessages, System.Int64 ReceivedBytes, System.Int64 SentDatagrams, System.Int64 SentWireBytes, System.Int64 ReceivedDatagrams, System.Int64 ReceivedWireBytes, System.Int64 PacketLoss, System.Int64 SendErrors, System.Int64 ReceiveErrors, System.Int64 QueueDrops)
+  method Fw.Rt.Net.NetTransportSnapshot <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Net.NetTransportSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out Fw.Rt.Net.NetTransportRole Role, out System.Boolean Running, out System.Boolean Connected, out System.Int32 Peers, out System.Int64 SentMessages, out System.Int64 SentBytes, out System.Int64 ReceivedMessages, out System.Int64 ReceivedBytes, out System.Int64 SentDatagrams, out System.Int64 SentWireBytes, out System.Int64 ReceivedDatagrams, out System.Int64 ReceivedWireBytes, out System.Int64 PacketLoss, out System.Int64 SendErrors, out System.Int64 ReceiveErrors, out System.Int64 QueueDrops)
+  property Fw.Rt.Net.NetTransportRole Role {get;init;}
+  property System.Boolean Connected {get;init;}
+  property System.Boolean Running {get;init;}
+  property System.Int32 Peers {get;init;}
+  property System.Int64 PacketLoss {get;init;}
+  property System.Int64 QueueDrops {get;init;}
+  property System.Int64 ReceiveErrors {get;init;}
+  property System.Int64 ReceivedBytes {get;init;}
+  property System.Int64 ReceivedDatagrams {get;init;}
+  property System.Int64 ReceivedMessages {get;init;}
+  property System.Int64 ReceivedWireBytes {get;init;}
+  property System.Int64 SendErrors {get;init;}
+  property System.Int64 SentBytes {get;init;}
+  property System.Int64 SentDatagrams {get;init;}
+  property System.Int64 SentMessages {get;init;}
+  property System.Int64 SentWireBytes {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Net.NetTransportSnapshot left, Fw.Rt.Net.NetTransportSnapshot right)
+  static method System.Boolean op_Inequality(Fw.Rt.Net.NetTransportSnapshot left, Fw.Rt.Net.NetTransportSnapshot right)
+type static class Fw.Rt.Net.NetTransportType
+  const System.String Tcp = "tcp"
+  const System.String Udp = "udp"
+  static method System.Boolean TryNormalize(System.String value, out System.String transport)
+type sealed class Fw.Rt.Net.TcpNetTransport : Fw.Rt.Net.INetTransport, System.IDisposable
+  ctor()
+  method Fw.Rt.Net.NetTransportSnapshot Snapshot()
+  method System.Boolean Disconnect(System.Net.IPEndPoint remoteEndPoint)
+  method System.Boolean Send(System.Net.IPEndPoint remoteEndPoint, System.ReadOnlySpan<System.Byte> payload, System.Byte channel, Fw.Rt.Net.NetDelivery delivery)
+  method System.Boolean SendToServer(System.ReadOnlySpan<System.Byte> payload, System.Byte channel, Fw.Rt.Net.NetDelivery delivery)
+  method System.Boolean SendUnconnected(System.Net.IPEndPoint remoteEndPoint, System.ReadOnlySpan<System.Byte> payload)
+  method System.Boolean StartClient(System.String host, System.Int32 port, Fw.Rt.Net.NetTransportOptions options = null)
+  method System.Boolean StartServer(System.Int32 port, Fw.Rt.Net.NetTransportOptions options = null)
+  method System.Boolean StartUnconnected(Fw.Rt.Net.NetTransportOptions options = null)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Net.NetReceivedMessage> Receive(System.Int32 maxMessages)
+  method System.Void Close()
+  method System.Void Dispose()
+  property Fw.Rt.Net.NetTransportRole Role {get;}
+  property System.Boolean IsConnected {get;}
+  property System.Boolean IsRunning {get;}
+  property System.Net.IPEndPoint ServerEndPoint {get;}
 type sealed class Fw.Rt.Randomness.DeterministicRandomStream
   ctor(System.Int32 seed, System.Int64 step = 0)
   method Fw.Rt.Randomness.DeterministicRandomStream Fork(System.String channel, System.String key = null)
@@ -561,29 +1203,47 @@ type struct Fw.Rt.Randomness.RandomStreamState : System.IEquatable<Fw.Rt.Randomn
   property System.Int64 Step {get;init;}
   static method System.Boolean op_Equality(Fw.Rt.Randomness.RandomStreamState left, Fw.Rt.Randomness.RandomStreamState right)
   static method System.Boolean op_Inequality(Fw.Rt.Randomness.RandomStreamState left, Fw.Rt.Randomness.RandomStreamState right)
+type sealed class Fw.Rt.Rooms.RoomAllocationRequest
+  ctor()
+  property System.Int32 PreferredPort {get;init;}
+  property System.Int32 ProtocolVersion {get;init;}
+  property System.String CreatePayload {get;init;}
+  property System.String GameId {get;init;}
+  property System.String PreferredHost {get;init;}
 type sealed class Fw.Rt.Rooms.RoomDirectoryClient : System.IDisposable
   ctor(System.String baseUrl, System.Net.Http.HttpClient httpClient = null)
   method System.Threading.Tasks.Task HeartbeatAsync(System.String roomId, System.String heartbeatToken, Fw.Rt.Rooms.RoomHeartbeat heartbeat, System.Threading.CancellationToken cancellationToken = null)
   method System.Threading.Tasks.Task UnregisterAsync(System.String roomId, System.String heartbeatToken, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task<Fw.Rt.Rooms.RoomJoin> AllocateAsync(Fw.Rt.Rooms.RoomAllocationRequest allocation, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task<Fw.Rt.Rooms.RoomJoin> AllocateAsync(System.String gameId, System.Int32 protocolVersion, System.Threading.CancellationToken cancellationToken = null)
   method System.Threading.Tasks.Task<Fw.Rt.Rooms.RoomJoin> JoinAsync(System.String roomId, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task<Fw.Rt.Rooms.RoomJoin> SpectateAsync(System.String roomId, System.Threading.CancellationToken cancellationToken = null)
   method System.Threading.Tasks.Task<Fw.Rt.Rooms.RoomRegistrationResult> RegisterAsync(Fw.Rt.Rooms.RoomRegistration registration, System.String registrationSecret, System.Threading.CancellationToken cancellationToken = null)
   method System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Fw.Rt.Rooms.RoomInfo>> ListAsync(System.String gameId, System.Int32 protocolVersion, System.Threading.CancellationToken cancellationToken = null)
+  method System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<Fw.Rt.Rooms.RoomInfo>> ListSpectatableAsync(System.String gameId, System.Int32 protocolVersion, System.Threading.CancellationToken cancellationToken = null)
   method System.Void Dispose()
 type sealed class Fw.Rt.Rooms.RoomDirectoryException : System.Exception
   ctor(System.String message, System.Int32 statusCode = 0)
   property System.Int32 StatusCode {get;}
 type sealed class Fw.Rt.Rooms.RoomDirectoryStore
   ctor(System.String secret, System.TimeSpan staleAfter, System.TimeSpan ticketLifetime)
+  method Fw.Rt.Rooms.RoomJoin Allocate(Fw.Rt.Rooms.RoomAllocationRequest request, System.DateTimeOffset now)
+  method Fw.Rt.Rooms.RoomJoin Allocate(System.String gameId, System.Int32 protocolVersion, System.DateTimeOffset now)
   method Fw.Rt.Rooms.RoomJoin Join(System.String roomId, System.DateTimeOffset now)
+  method Fw.Rt.Rooms.RoomJoin Spectate(System.String roomId, System.DateTimeOffset now)
   method Fw.Rt.Rooms.RoomRegistrationResult Register(Fw.Rt.Rooms.RoomRegistration registration, System.String registrationSecret, System.String remoteHost, System.DateTimeOffset now)
   method System.Boolean Heartbeat(System.String roomId, System.String heartbeatToken, Fw.Rt.Rooms.RoomHeartbeat heartbeat, System.DateTimeOffset now)
   method System.Boolean Remove(System.String roomId, System.String heartbeatToken)
   method System.Collections.Generic.IReadOnlyList<Fw.Rt.Rooms.RoomInfo> List(System.String gameId, System.Int32 protocolVersion, System.DateTimeOffset now)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Rooms.RoomInfo> ListSpectatable(System.String gameId, System.Int32 protocolVersion, System.DateTimeOffset now)
   method System.Int32 Sweep(System.DateTimeOffset now)
   property System.Int32 Count {get;}
 type sealed class Fw.Rt.Rooms.RoomHeartbeat
   ctor()
+  property System.Collections.Generic.Dictionary<System.String,System.String> Tags {get;init;}
+  property System.Int32 Capacity {get;init;}
   property System.Int32 Players {get;init;}
+  property System.String MapKey {get;init;}
   property System.String Status {get;init;}
 type sealed class Fw.Rt.Rooms.RoomInfo
   ctor()
@@ -600,10 +1260,12 @@ type sealed class Fw.Rt.Rooms.RoomInfo
   property System.String Region {get;init;}
   property System.String RoomId {get;init;}
   property System.String Status {get;init;}
+  property System.String Transport {get;init;}
 type sealed class Fw.Rt.Rooms.RoomJoin
   ctor()
   property Fw.Rt.Rooms.RoomInfo Room {get;init;}
   property System.Int64 ExpiresAtUnixSeconds {get;init;}
+  property System.String CreatePayload {get;init;}
   property System.String Ticket {get;init;}
 type sealed class Fw.Rt.Rooms.RoomRegistration
   ctor()
@@ -617,6 +1279,7 @@ type sealed class Fw.Rt.Rooms.RoomRegistration
   property System.String Name {get;init;}
   property System.String Region {get;init;}
   property System.String RoomId {get;init;}
+  property System.String Transport {get;init;}
 type sealed class Fw.Rt.Rooms.RoomRegistrationResult
   ctor()
   property Fw.Rt.Rooms.RoomInfo Room {get;init;}
@@ -627,16 +1290,122 @@ type static class Fw.Rt.Rooms.RoomStatus
   const System.String Closed = "closed"
   const System.String Full = "full"
   const System.String Open = "open"
+  const System.String Playing = "playing"
 type static class Fw.Rt.Rooms.RoomTicket
-  const System.Int32 Version = 1
+  const System.Int32 MinimumSupportedVersion = 2
+  const System.Int32 Version = 3
+  static method System.Boolean SupportsVersion(System.Int32 version)
   static method System.Boolean TryValidate(System.String ticket, System.String secret, System.String expectedGameId, System.String expectedRoomId, System.DateTimeOffset now, out Fw.Rt.Rooms.RoomTicketClaims claims)
-  static method System.String Create(System.String secret, System.String gameId, System.String roomId, System.DateTimeOffset expiresAt, System.String nonce = null)
+  static method System.String Create(System.String secret, System.String gameId, System.String roomId, System.DateTimeOffset expiresAt, System.String nonce = null, System.String createPayload = "", System.String purpose = "play", System.Collections.Generic.IReadOnlyCollection<System.String> permissions = null)
 type sealed class Fw.Rt.Rooms.RoomTicketClaims
   ctor()
+  property System.Collections.Generic.IReadOnlyList<System.String> Permissions {get;init;}
+  property System.Int32 Version {get;init;}
   property System.Int64 ExpiresAtUnixSeconds {get;init;}
+  property System.String CreatePayload {get;init;}
   property System.String GameId {get;init;}
   property System.String Nonce {get;init;}
+  property System.String Purpose {get;init;}
   property System.String RoomId {get;init;}
+type static class Fw.Rt.Rooms.RoomTicketPurpose
+  const System.String Play = "play"
+  const System.String Spectate = "spectate"
+type sealed class Fw.Rt.Script.ScriptBudgetException : Fw.Rt.Script.ScriptRuntimeException
+  ctor(System.String module, System.Int32 limit)
+  property System.Int32 Limit {get;}
+  property System.String Module {get;}
+type sealed class Fw.Rt.Script.ScriptCallResult : System.IEquatable<Fw.Rt.Script.ScriptCallResult>
+  ctor(System.Object Value, System.Collections.Generic.IReadOnlyList<Fw.Rt.Script.ScriptCommand> Commands, System.Int32 Instructions)
+  method Fw.Rt.Script.ScriptCallResult <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Script.ScriptCallResult other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Object Value, out System.Collections.Generic.IReadOnlyList<Fw.Rt.Script.ScriptCommand> Commands, out System.Int32 Instructions)
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.Script.ScriptCommand> Commands {get;init;}
+  property System.Int32 Instructions {get;init;}
+  property System.Object Value {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Script.ScriptCallResult left, Fw.Rt.Script.ScriptCallResult right)
+  static method System.Boolean op_Inequality(Fw.Rt.Script.ScriptCallResult left, Fw.Rt.Script.ScriptCallResult right)
+type sealed class Fw.Rt.Script.ScriptCommand : System.IEquatable<Fw.Rt.Script.ScriptCommand>
+  ctor(System.String Name, System.Collections.Generic.IReadOnlyList<System.Object> Args)
+  method Fw.Rt.Script.ScriptCommand <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Script.ScriptCommand other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String Name, out System.Collections.Generic.IReadOnlyList<System.Object> Args)
+  property System.Collections.Generic.IReadOnlyList<System.Object> Args {get;init;}
+  property System.String Name {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Script.ScriptCommand left, Fw.Rt.Script.ScriptCommand right)
+  static method System.Boolean op_Inequality(Fw.Rt.Script.ScriptCommand left, Fw.Rt.Script.ScriptCommand right)
+type sealed class Fw.Rt.Script.ScriptGraph
+  property System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Data {get;}
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.Script.ScriptGraphEdge> Edges {get;}
+  property System.Collections.Generic.IReadOnlyList<Fw.Rt.Script.ScriptGraphNode> Nodes {get;}
+  property System.String Id {get;}
+  static method Fw.Rt.Script.ScriptGraph Parse(System.String json, System.String source = "graph.json")
+type sealed class Fw.Rt.Script.ScriptGraphEdge : System.IEquatable<Fw.Rt.Script.ScriptGraphEdge>
+  ctor(System.String Id, System.Int32 FromNode, System.String FromPort, System.Int32 ToNode, System.String ToPort)
+  method Fw.Rt.Script.ScriptGraphEdge <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Script.ScriptGraphEdge other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String Id, out System.Int32 FromNode, out System.String FromPort, out System.Int32 ToNode, out System.String ToPort)
+  property System.Int32 FromNode {get;init;}
+  property System.Int32 ToNode {get;init;}
+  property System.String FromPort {get;init;}
+  property System.String Id {get;init;}
+  property System.String ToPort {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Script.ScriptGraphEdge left, Fw.Rt.Script.ScriptGraphEdge right)
+  static method System.Boolean op_Inequality(Fw.Rt.Script.ScriptGraphEdge left, Fw.Rt.Script.ScriptGraphEdge right)
+type sealed class Fw.Rt.Script.ScriptGraphNode : System.IEquatable<Fw.Rt.Script.ScriptGraphNode>
+  ctor(System.Int32 Id, System.String Type, System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Values)
+  method Fw.Rt.Script.ScriptGraphNode <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Script.ScriptGraphNode other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32 Id, out System.String Type, out System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Values)
+  property System.Collections.Generic.IReadOnlyDictionary<System.String,System.Object> Values {get;init;}
+  property System.Int32 Id {get;init;}
+  property System.String Type {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Script.ScriptGraphNode left, Fw.Rt.Script.ScriptGraphNode right)
+  static method System.Boolean op_Inequality(Fw.Rt.Script.ScriptGraphNode left, Fw.Rt.Script.ScriptGraphNode right)
+type sealed class Fw.Rt.Script.ScriptHost
+  ctor()
+  method System.Void RegisterQuery(System.String name, System.Func<System.Collections.Generic.IReadOnlyList<System.Object>,System.Object> query)
+  property System.Collections.Generic.IReadOnlyCollection<System.String> Queries {get;}
+type sealed class Fw.Rt.Script.ScriptRuntime : System.IDisposable
+  ctor(Fw.Rt.Script.ScriptRuntimeOptions options = null)
+  method Fw.Rt.Script.ScriptCallResult Call(System.String module, System.String function, System.Object input = null, Fw.Rt.Script.ScriptHost host = null)
+  method System.Boolean HasFunction(System.String module, System.String function)
+  method System.Void Dispose()
+  method System.Void Load(System.String id, System.String source)
+  method System.Void RequireFunction(System.String module, System.String function)
+  property System.Collections.Generic.IReadOnlyCollection<System.String> Modules {get;}
+type class Fw.Rt.Script.ScriptRuntimeException : System.Exception
+  ctor(System.String message)
+  ctor(System.String message, System.Exception innerException)
+type sealed class Fw.Rt.Script.ScriptRuntimeOptions : System.IEquatable<Fw.Rt.Script.ScriptRuntimeOptions>
+  ctor(System.Int32 LoadInstructionLimit = 100000, System.Int32 CallInstructionLimit = 20000, System.Int32 MaxValueDepth = 32, System.Int32 MaxCollectionItems = 16384, System.Int32 MaxStringLength = 1048576, System.Int32 MaxSourceLength = 1048576, System.Int32 MaxCommands = 1024)
+  method Fw.Rt.Script.ScriptRuntimeOptions <Clone>$()
+  method Fw.Rt.Script.ScriptRuntimeOptions Validate()
+  method System.Boolean Equals(Fw.Rt.Script.ScriptRuntimeOptions other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.Int32 LoadInstructionLimit, out System.Int32 CallInstructionLimit, out System.Int32 MaxValueDepth, out System.Int32 MaxCollectionItems, out System.Int32 MaxStringLength, out System.Int32 MaxSourceLength, out System.Int32 MaxCommands)
+  property System.Int32 CallInstructionLimit {get;init;}
+  property System.Int32 LoadInstructionLimit {get;init;}
+  property System.Int32 MaxCollectionItems {get;init;}
+  property System.Int32 MaxCommands {get;init;}
+  property System.Int32 MaxSourceLength {get;init;}
+  property System.Int32 MaxStringLength {get;init;}
+  property System.Int32 MaxValueDepth {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Script.ScriptRuntimeOptions left, Fw.Rt.Script.ScriptRuntimeOptions right)
+  static method System.Boolean op_Inequality(Fw.Rt.Script.ScriptRuntimeOptions left, Fw.Rt.Script.ScriptRuntimeOptions right)
 type sealed class Fw.Rt.State.StateMachine<TState,TContext>
   ctor(TContext context, System.Collections.Generic.IEqualityComparer<TState> comparer = null)
   event System.Action<TState,System.Object> Started
@@ -669,6 +1438,7 @@ type sealed class Fw.Rt.Systems.SystemRuntime
   method System.Boolean Remove(System.String id, Fw.Rt.Systems.SystemRemoveMode mode = DenyIfReferenced)
   method System.Boolean TryGetContext<TContext>(System.String id, out TContext context)
   method System.Collections.Generic.IReadOnlyList<Fw.Rt.Systems.SystemSnapshot> GetSnapshots(System.Boolean includeParent = true)
+  method System.Collections.Generic.IReadOnlyList<Fw.Rt.Systems.SystemTimingSnapshot> GetTimingSnapshots(System.Boolean includeParent = true)
   method System.Void Add<TContext>(System.String id, Fw.Rt.Systems.ISystem<TContext> system, TContext context, System.String phase = "")
   method System.Void AddWithDependencies<TContext>(System.String id, Fw.Rt.Systems.ISystem<TContext> system, TContext context, System.String phase, System.Collections.Generic.IEnumerable<System.String> dependencies)
   method System.Void InitAll()
@@ -705,3 +1475,24 @@ type sealed class Fw.Rt.Systems.SystemSnapshot : System.IEquatable<Fw.Rt.Systems
   property System.String Scope {get;init;}
   static method System.Boolean op_Equality(Fw.Rt.Systems.SystemSnapshot left, Fw.Rt.Systems.SystemSnapshot right)
   static method System.Boolean op_Inequality(Fw.Rt.Systems.SystemSnapshot left, Fw.Rt.Systems.SystemSnapshot right)
+type sealed class Fw.Rt.Systems.SystemTimingSnapshot : System.IEquatable<Fw.Rt.Systems.SystemTimingSnapshot>
+  ctor(System.String Scope, System.String Id, System.String Phase, System.Int32 SampleCount, System.Double LastMilliseconds, System.Double AverageMilliseconds, System.Double P95Milliseconds, System.Double MaxMilliseconds, System.Int64 LastAllocatedBytes, System.Double AverageAllocatedBytes, System.Int64 MaxAllocatedBytes)
+  method Fw.Rt.Systems.SystemTimingSnapshot <Clone>$()
+  method System.Boolean Equals(Fw.Rt.Systems.SystemTimingSnapshot other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.Void Deconstruct(out System.String Scope, out System.String Id, out System.String Phase, out System.Int32 SampleCount, out System.Double LastMilliseconds, out System.Double AverageMilliseconds, out System.Double P95Milliseconds, out System.Double MaxMilliseconds, out System.Int64 LastAllocatedBytes, out System.Double AverageAllocatedBytes, out System.Int64 MaxAllocatedBytes)
+  property System.Double AverageAllocatedBytes {get;init;}
+  property System.Double AverageMilliseconds {get;init;}
+  property System.Double LastMilliseconds {get;init;}
+  property System.Double MaxMilliseconds {get;init;}
+  property System.Double P95Milliseconds {get;init;}
+  property System.Int32 SampleCount {get;init;}
+  property System.Int64 LastAllocatedBytes {get;init;}
+  property System.Int64 MaxAllocatedBytes {get;init;}
+  property System.String Id {get;init;}
+  property System.String Phase {get;init;}
+  property System.String Scope {get;init;}
+  static method System.Boolean op_Equality(Fw.Rt.Systems.SystemTimingSnapshot left, Fw.Rt.Systems.SystemTimingSnapshot right)
+  static method System.Boolean op_Inequality(Fw.Rt.Systems.SystemTimingSnapshot left, Fw.Rt.Systems.SystemTimingSnapshot right)

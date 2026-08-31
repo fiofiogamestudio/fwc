@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Globalization;
 using System.Text;
 using Fw.Rt.Bridge;
+using Fw.Rt.Archives;
 using Fw.Rt.Config;
 using Fw.Rt.Rooms;
 using Fw.Rt.Systems;
@@ -25,6 +26,46 @@ static class ApiTests
         RequireMethod(typeof(WireFrame), nameof(WireFrame.Encode), true, typeof(byte[]), typeof(ReadOnlySpan<byte>), typeof(WireFrameOptions));
         RequireMethod(typeof(WireFrame), nameof(WireFrame.Decode), true, typeof(byte[]), typeof(ReadOnlySpan<byte>), typeof(WireFrameOptions));
         RequireMethod(typeof(WireFrame), nameof(WireFrame.HasHeader), true, typeof(bool), typeof(ReadOnlySpan<byte>));
+
+        RequireConstructor(typeof(FrameArchiveOptions), typeof(int), typeof(int), typeof(int), typeof(int), typeof(int));
+        RequireMethod(
+            typeof(FrameArchive),
+            nameof(FrameArchive.Create),
+            true,
+            typeof(FrameArchiveWriter),
+            typeof(string),
+            typeof(ReadOnlySpan<byte>),
+            typeof(FrameArchiveOptions)
+        );
+        RequireMethod(
+            typeof(FrameArchive),
+            nameof(FrameArchive.Open),
+            true,
+            typeof(FrameArchiveReader),
+            typeof(string),
+            typeof(FrameArchiveOptions)
+        );
+        RequireMethod(
+            typeof(FrameArchive),
+            nameof(FrameArchive.Recover),
+            true,
+            typeof(FrameArchiveRecovery),
+            typeof(string),
+            typeof(FrameArchiveOptions)
+        );
+        RequireMethod(
+            typeof(FrameArchiveWriter),
+            nameof(FrameArchiveWriter.Append),
+            false,
+            typeof(void),
+            typeof(long),
+            typeof(bool),
+            typeof(ReadOnlySpan<byte>)
+        );
+        RequireMethod(typeof(FrameArchiveWriter), nameof(FrameArchiveWriter.Complete), false, typeof(string));
+        RequireMethod(typeof(FrameArchiveReader), nameof(FrameArchiveReader.ReadAt), false, typeof(FrameArchiveFrame), typeof(int));
+        RequireMethod(typeof(FrameArchiveReader), nameof(FrameArchiveReader.FindFrameIndex), false, typeof(int), typeof(long));
+        RequireMethod(typeof(FrameArchiveReader), nameof(FrameArchiveReader.FindCheckpointIndex), false, typeof(int), typeof(long));
 
         RequireConstant(typeof(ConfigPack), nameof(ConfigPack.HeaderSize), ConfigPack.HeaderSize);
         RequireConstant(typeof(ConfigPack), nameof(ConfigPack.Version), ConfigPack.Version);
@@ -55,6 +96,48 @@ static class ApiTests
         RequireConstructor(typeof(RoomInfo));
         RequireProperty(typeof(RoomInfo), nameof(RoomInfo.RoomId), typeof(string));
         RequireProperty(typeof(RoomInfo), nameof(RoomInfo.ProtocolVersion), typeof(int));
+        RequireProperty(typeof(RoomInfo), nameof(RoomInfo.Transport), typeof(string));
+        RequireProperty(typeof(RoomRegistration), nameof(RoomRegistration.Transport), typeof(string));
+        RequireProperty(
+            typeof(RoomAllocationRequest),
+            nameof(RoomAllocationRequest.CreatePayload),
+            typeof(string)
+        );
+        RequireProperty(
+            typeof(RoomAllocationRequest),
+            nameof(RoomAllocationRequest.PreferredHost),
+            typeof(string)
+        );
+        RequireProperty(
+            typeof(RoomAllocationRequest),
+            nameof(RoomAllocationRequest.PreferredPort),
+            typeof(int)
+        );
+        RequireProperty(typeof(RoomJoin), nameof(RoomJoin.CreatePayload), typeof(string));
+        RequireProperty(
+            typeof(RoomTicketClaims),
+            nameof(RoomTicketClaims.CreatePayload),
+            typeof(string)
+        );
+        RequireProperty(typeof(RoomHeartbeat), nameof(RoomHeartbeat.MapKey), typeof(string));
+        RequireProperty(typeof(RoomHeartbeat), nameof(RoomHeartbeat.Capacity), typeof(int));
+        RequireMethod(
+            typeof(RoomDirectoryStore),
+            nameof(RoomDirectoryStore.Allocate),
+            false,
+            typeof(RoomJoin),
+            typeof(string),
+            typeof(int),
+            typeof(DateTimeOffset)
+        );
+        RequireMethod(
+            typeof(RoomDirectoryStore),
+            nameof(RoomDirectoryStore.Allocate),
+            false,
+            typeof(RoomJoin),
+            typeof(RoomAllocationRequest),
+            typeof(DateTimeOffset)
+        );
 
         RequireMethod(typeof(ISystem<object>), nameof(ISystem<object>.Init), false, typeof(void), typeof(object));
         RequireMethod(typeof(ISystem<object>), nameof(ISystem<object>.Tick), false, typeof(void), typeof(float));
@@ -73,6 +156,13 @@ static class ApiTests
         RequireMethod(typeof(SystemRuntime), nameof(SystemRuntime.Has), false, typeof(bool), typeof(string));
         RequireMethod(typeof(SystemRuntime), nameof(SystemRuntime.InitAll), false, typeof(void));
         RequireMethod(typeof(SystemRuntime), nameof(SystemRuntime.Tick), false, typeof(void), typeof(float));
+        RequireMethod(
+            typeof(SystemRuntime),
+            nameof(SystemRuntime.GetTimingSnapshots),
+            false,
+            typeof(IReadOnlyList<SystemTimingSnapshot>),
+            typeof(bool)
+        );
         RequireMethod(typeof(SystemRuntime), nameof(SystemRuntime.ShutdownAll), false, typeof(void));
         RequireSystemAdd();
         RequireSystemGetContext();
