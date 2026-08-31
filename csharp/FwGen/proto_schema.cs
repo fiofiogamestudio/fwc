@@ -632,7 +632,8 @@ static class TextUtil
 
     internal static string NormalizeText(string text)
     {
-        var normalized = text.Replace("\r\n", "\n");
-        return string.Join("\n", normalized.Split('\n').Select(line => line.TrimEnd()));
+        var normalized = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        var lines = normalized.Split('\n').Select(line => line.TrimEnd());
+        return string.Join("\n", lines).TrimEnd('\n') + "\n";
     }
 }

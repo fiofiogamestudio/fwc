@@ -245,12 +245,13 @@ static class SystemTests
         {
             var path = Path.Combine(root, "out", "value.txt");
             var first = new GenerationBatch(root);
-            first.StageText(path, "first  \r\n");
+            first.StageText(path, "first  \r\n\r\n\r");
             first.Commit();
+            Equal("first\n", File.ReadAllText(path), "normalized CRLF output");
             var second = new GenerationBatch(root);
-            second.StageText(path, "second  \n");
+            second.StageText(path, "second  \n\n\n");
             second.Commit();
-            Equal("second\n", File.ReadAllText(path), "atomic output");
+            Equal("second\n", File.ReadAllText(path), "normalized LF output");
             Equal(0, Directory.GetFiles(Path.GetDirectoryName(path)!, "*.fwgen.*").Length, "transaction artifacts");
         });
     }
