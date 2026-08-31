@@ -176,6 +176,32 @@
 		"properties": [],
 		"signals": []
 	},
+	"FBodyOrientation": {
+		"base": "RefCounted",
+		"constants": [
+			"DEFAULT_HARD_TWIST_DEGREES:float=80.0",
+			"DEFAULT_LOWER_TURN_SPEED_DEGREES:float=720.0",
+			"DEFAULT_RECENTER_SPEED_DEGREES:float=420.0",
+			"DEFAULT_SOFT_TWIST_DEGREES:float=55.0",
+			"DEFAULT_UPPER_RESPONSE_SECONDS:float=0.12",
+			"DEFAULT_UPPER_RETURN_SECONDS:float=0.16",
+			"LOCOMOTION_FRAMES:Array=Array[StringName]([&\"velocity\", &\"aim\"])",
+			"LOCOMOTION_FRAME_AIM:StringName=&\"aim\"",
+			"LOCOMOTION_FRAME_VELOCITY:StringName=&\"velocity\"",
+			"POLICIES:Array=Array[StringName]([&\"upper\", &\"committed\", &\"full_body\"])",
+			"POLICY_COMMITTED:StringName=&\"committed\"",
+			"POLICY_FULL_BODY:StringName=&\"full_body\"",
+			"POLICY_UPPER:StringName=&\"upper\""
+		],
+		"methods": [
+			"normalize_locomotion_frame(frame:StringName)->StringName;defaults=[]",
+			"normalize_policy(policy:StringName)->StringName;defaults=[]",
+			"resolve(current_lower_yaw:float, move_yaw:float, aim_yaw:float, is_moving:bool, upper_active:bool, policy:StringName, delta:float, options:Dictionary)->Dictionary;defaults=[&\"upper\", 0.0, null]",
+			"validate_options(options:Dictionary)->PackedStringArray;defaults=[]"
+		],
+		"properties": [],
+		"signals": []
+	},
 	"FBusy": {
 		"base": "FForm",
 		"constants": [],
@@ -492,6 +518,24 @@
 			"written(entry:Dictionary)"
 		]
 	},
+	"FMotionMatcher": {
+		"base": "RefCounted",
+		"constants": [
+			"DEFAULT_OPTIONS:Dictionary={\n\"base_blend_seconds\": 0.12,\n\"blend_score_scale\": 0.035,\n\"contact_weight\": 0.35,\n\"continuity_weight\": 0.65,\n\"maximum_blend_seconds\": 0.22,\n\"minimum_hold_seconds\": 0.1,\n\"minimum_improvement\": 0.04,\n\"phase_weight\": 0.25,\n\"pose_velocity_weight\": 0.08,\n\"pose_weight\": 0.75,\n\"switch_cost\": 0.12,\n\"trajectory_weight\": 1.0,\n\"velocity_weight\": 1.6\n}",
+			"EPSILON:float=1e-06"
+		],
+		"methods": [
+			"candidate_count()->int;defaults=[]",
+			"configure(candidates:Array[Dictionary], options:Dictionary)->PackedStringArray;defaults=[null]",
+			"errors()->PackedStringArray;defaults=[]",
+			"is_ready()->bool;defaults=[]",
+			"last_result()->Dictionary;defaults=[]",
+			"match_motion(query:Dictionary, delta:float)->Dictionary;defaults=[0.0]",
+			"reset()->Nil;defaults=[]"
+		],
+		"properties": [],
+		"signals": []
+	},
 	"FNodePool": {
 		"base": "FPool",
 		"constants": [],
@@ -513,6 +557,94 @@
 			"stats(key:String)->Dictionary;defaults=[\"\"]",
 			"unregister_prefab(key:String, recycle_active:bool)->Nil;defaults=[false]",
 			"warmup(key:String, count:int)->bool;defaults=[]"
+		],
+		"properties": [],
+		"signals": []
+	},
+	"FProceduralHumanoidModifier": {
+		"base": "SkeletonModifier3D",
+		"constants": [
+			"ARM_CHAINS:Dictionary={\n\"left\": [\"left_upper_arm\", \"left_lower_arm\", \"left_wrist\", \"left_hand\"],\n\"right\": [\"right_upper_arm\", \"right_lower_arm\", \"right_wrist\", \"right_hand\"]\n}",
+			"DEFAULT_SHOULDER_SWING_DEGREES:float=22.0",
+			"DEFAULT_TORSO_REACH_LEAN_DEGREES:float=30.0",
+			"EPSILON:float=0.0001",
+			"HARD_MAX_SHOULDER_SWING_DEGREES:float=65.0",
+			"LEG_CHAINS:Dictionary={\n\"left\": [\"left_upper_leg\", \"left_lower_leg\", \"left_foot\"],\n\"right\": [\"right_upper_leg\", \"right_lower_leg\", \"right_foot\"]\n}",
+			"MAX_SHOULDER_SWING_DEGREES:float=35.0",
+			"MAX_TORSO_REACH_LEAN_DEGREES:float=40.0",
+			"MIN_BEND_LENGTH:float=0.002",
+			"TORSO_CHAIN:Array=[\"hips\", \"spine\", \"chest\"]"
+		],
+		"methods": [
+			"align_chain_basis(base_basis:Basis, rest_child_offset:Vector3, desired_segment:Vector3)->Basis;defaults=[]",
+			"clear_pose()->Nil;defaults=[]",
+			"configure(profile:Dictionary, rig_root:Node3D)->PackedStringArray;defaults=[]",
+			"errors()->PackedStringArray;defaults=[]",
+			"fit_hand_targets(targets:Dictionary, pose:Dictionary, max_iterations:int, translation_axes:Array)->Dictionary;defaults=[null, 8, null]",
+			"is_configured()->bool;defaults=[]",
+			"metrics()->Dictionary;defaults=[]",
+			"solve_now()->bool;defaults=[]",
+			"solve_two_bone_joint(start:Vector3, target:Vector3, pole:Vector3, upper_length:float, lower_length:float)->Vector3;defaults=[]",
+			"submit_pose(pose:Dictionary)->Nil;defaults=[]"
+		],
+		"properties": [],
+		"signals": []
+	},
+	"FProceduralHumanoidRigAdapter": {
+		"base": "FProceduralRigAdapter",
+		"constants": [],
+		"methods": [
+			"fit_hand_targets(targets:Dictionary, pose_override:Dictionary, max_iterations:int, translation_axes:Array)->Dictionary;defaults=[null, 8, null]",
+			"semantic_transform(semantic:StringName)->Transform3D;defaults=[]"
+		],
+		"properties": [],
+		"signals": []
+	},
+	"FProceduralPose": {
+		"base": "RefCounted",
+		"constants": [
+			"EASING_IN:StringName=&\"in\"",
+			"EASING_IN_CUBIC:StringName=&\"ease_in_cubic\"",
+			"EASING_IN_QUINT:StringName=&\"ease_in_quint\"",
+			"EASING_LINEAR:StringName=&\"linear\"",
+			"EASING_NAMES:Array=Array[StringName]([&\"linear\", &\"smooth\", &\"in\", &\"out\", &\"ease_in_cubic\", &\"ease_in_quint\", &\"ease_out_cubic\", &\"ease_out_back\"])",
+			"EASING_OUT:StringName=&\"out\"",
+			"EASING_OUT_BACK:StringName=&\"ease_out_back\"",
+			"EASING_OUT_CUBIC:StringName=&\"ease_out_cubic\"",
+			"EASING_SMOOTH:StringName=&\"smooth\""
+		],
+		"methods": [
+			"ease(ratio:float, easing:StringName)->float;defaults=[&\"smooth\"]",
+			"group_tracks(keys:Array, target_field:String)->Dictionary;defaults=[\"target\"]",
+			"required_subsamples(from_pose:Dictionary, to_pose:Dictionary, max_angle_degrees:float, max_distance:float, max_samples:int)->int;defaults=[10.0, 0.12, 4]",
+			"sample_track(keys:Array, time:float)->Dictionary;defaults=[]",
+			"sample_track_euler(keys:Array, time:float)->Dictionary;defaults=[]",
+			"sample_transform(keys:Array, time:float)->Transform3D;defaults=[]",
+			"validate_keys(keys:Array, require_target:bool)->PackedStringArray;defaults=[true]"
+		],
+		"properties": [],
+		"signals": []
+	},
+	"FProceduralRigAdapter": {
+		"base": "RefCounted",
+		"constants": [
+			"POSE_FAMILY_TOPDOWN_HUMANOID:StringName=&\"topdown_humanoid_v1\""
+		],
+		"methods": [
+			"backend_id()->StringName;defaults=[]",
+			"clear_pose()->Nil;defaults=[]",
+			"errors()->PackedStringArray;defaults=[]",
+			"fit_hand_targets(_targets:Dictionary, _pose_override:Dictionary, _max_iterations:int, _translation_axes:Array)->Dictionary;defaults=[null, 8, null]",
+			"get_socket(socket_id:StringName)->Node3D;defaults=[]",
+			"is_configured()->bool;defaults=[]",
+			"is_ready()->bool;defaults=[]",
+			"metrics()->Dictionary;defaults=[]",
+			"pose_family()->StringName;defaults=[]",
+			"semantic_transform(_semantic:StringName)->Transform3D;defaults=[]",
+			"setup(rig_root:Node3D, profile:Dictionary)->PackedStringArray;defaults=[null]",
+			"solve_now()->bool;defaults=[]",
+			"submit_pose(pose:Dictionary)->Nil;defaults=[]",
+			"supports_pose_family(value:StringName)->bool;defaults=[]"
 		],
 		"properties": [],
 		"signals": []
@@ -546,6 +678,21 @@
 		"properties": [],
 		"signals": []
 	},
+	"FSegmentedHumanoidRigAdapter": {
+		"base": "FProceduralRigAdapter",
+		"constants": [
+			"DEFAULT_ARM_LENGTHS:Vector2=Vector2(0.34, 0.32)",
+			"DEFAULT_LEG_LENGTHS:Vector2=Vector2(0.4, 0.38)",
+			"EPSILON:float=0.0001",
+			"REQUIRED_BONES:PackedStringArray=PackedStringArray(\"hips\", \"spine\", \"chest\", \"head\", \"left_upper_arm\", \"left_lower_arm\", \"left_hand\", \"right_upper_arm\", \"right_lower_arm\", \"right_hand\", \"left_upper_leg\", \"left_lower_leg\", \"left_foot\", \"right_upper_leg\", \"right_lower_leg\", \"right_foot\")"
+		],
+		"methods": [
+			"fit_hand_targets(targets:Dictionary, pose_override:Dictionary, max_iterations:int, translation_axes:Array)->Dictionary;defaults=[null, 8, null]",
+			"semantic_transform(semantic:StringName)->Transform3D;defaults=[]"
+		],
+		"properties": [],
+		"signals": []
+	},
 	"FSelection": {
 		"base": "RefCounted",
 		"constants": [],
@@ -562,6 +709,24 @@
 		"signals": [
 			"changed()"
 		]
+	},
+	"FSkeletonAppearanceModifier": {
+		"base": "SkeletonModifier3D",
+		"constants": [
+			"DEFAULT_MAX_SCALE:Vector3=Vector3(1.25, 1.25, 1.25)",
+			"DEFAULT_MIN_SCALE:Vector3=Vector3(0.75, 0.75, 0.75)"
+		],
+		"methods": [
+			"clear_adjustments()->Nil;defaults=[]",
+			"configure(profile:Dictionary)->PackedStringArray;defaults=[]",
+			"errors()->PackedStringArray;defaults=[]",
+			"is_configured()->bool;defaults=[]",
+			"metrics()->Dictionary;defaults=[]",
+			"solve_now()->bool;defaults=[]",
+			"submit_adjustments(adjustments:Dictionary)->Nil;defaults=[]"
+		],
+		"properties": [],
+		"signals": []
 	},
 	"FStateMachine": {
 		"base": "RefCounted",
