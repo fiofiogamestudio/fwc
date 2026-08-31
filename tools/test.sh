@@ -32,10 +32,9 @@ for pair in \
   }
 done
 
-dotnet build "${FW_ROOT}/csharp/FwRuntime/FwRuntime.csproj" -c Release
 dotnet build "${FW_ROOT}/csharp/FwGen/FwGen.csproj" -c Release
 dotnet run --project "${FW_ROOT}/csharp/FwGenTests/FwGenTests.csproj" -c Release
-dotnet run --project "${FW_ROOT}/csharp/FwRuntime.Verify/FwRuntime.Verify.csproj" -c Release
+dotnet run --project "${FW_ROOT}/csharp/Fw.Verify/Fw.Verify.csproj" -c Release
 
 mkdir -p "${TEST_ROOT}/fw"
 tar \

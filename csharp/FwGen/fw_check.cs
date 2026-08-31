@@ -260,11 +260,8 @@ static class FwCheck
             RequireConfigValue("script", "csharp");
             RequireConfigValue("dotnet", "game");
             RequireConfigValue("dotnet", "fwgen");
-            if (_config.HasUseSection())
-            {
-                RequireConfigValues("use", "game");
-                RequireConfigValues("use", "host");
-            }
+            RequireConfigValues("use", "game");
+            RequireConfigValues("use", "host");
             try
             {
                 Craft.ValidateProjectName(_config.ProjectName());
@@ -371,8 +368,7 @@ static class FwCheck
             if (File.Exists(gameProject))
             {
                 string project = File.ReadAllText(gameProject, Encoding.UTF8);
-                if (_config.HasUseSection()
-                    && !HasProjectImport(gameProject, _config.GameKitPropsPath(_root)))
+                if (!HasProjectImport(gameProject, _config.GameKitPropsPath(_root)))
                 {
                     Error($"{Rel(gameProject)} must import csharp/_gen/_fw_game.props");
                 }
@@ -648,10 +644,7 @@ static class FwCheck
         {
             CheckGeneratedDir(_config.GodotGenDir(_root));
             CheckGeneratedDir(Path.GetDirectoryName(_config.CoreSystemsCsPath(_root)) ?? Path.Combine(_root, "csharp", "_gen"));
-            if (_config.HasUseSection())
-            {
-                CheckGeneratedDir(_config.GodotFwDir(_root));
-            }
+            CheckGeneratedDir(_config.GodotFwDir(_root));
             if (_config.HasFweGen())
             {
                 CheckGeneratedDir(_config.FweGenDir(_root));

@@ -6,6 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="FwGenTests" />
-    <ProjectReference Include="../FwRuntime/FwRuntime.csproj" />
+    <ProjectReference Include="../../core/cs/Fw.Core.csproj" />
   </ItemGroup>
 </Project>

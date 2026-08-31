@@ -202,7 +202,7 @@ func _test_exact_public_api() -> void:
 		return
 	var expected: Dictionary = expected_raw
 	if actual != expected:
-		printerr("[runtime-test] Godot public API changed. Review compatibility, then update %s:\n%s" % [
+		printerr("[runtime-test] Godot public API changed. Review the API change, then update %s:\n%s" % [
 			API_SNAPSHOT_PATH,
 			JSON.stringify(actual, "\t"),
 		])

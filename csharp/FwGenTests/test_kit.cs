@@ -5,6 +5,10 @@ static class TestKit
         Write(root, "fw.toml", """
             [project]
             name = "audit"
+
+            [use]
+            game = []
+            host = []
             """);
     }
 

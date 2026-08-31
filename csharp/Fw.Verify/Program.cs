@@ -43,7 +43,7 @@ VerifyTrainingAndEvaluation();
 VerifyScript();
 VerifyNet();
 
-Console.WriteLine("Verified FwRuntime systems, events, state, random, logging, animation, localization, AI, script, and network modules.");
+Console.WriteLine("Verified fw core, kit, and tool modules.");
 return;
 
 static void VerifyProceduralAction()

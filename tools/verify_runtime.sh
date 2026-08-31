@@ -4,7 +4,7 @@ set -euo pipefail
 fw_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 project_root="${1:-$(cd "$fw_root/.." && pwd)}"
 
-dotnet run --project "$fw_root/csharp/FwRuntime.Verify/FwRuntime.Verify.csproj"
+dotnet run --project "$fw_root/csharp/Fw.Verify/Fw.Verify.csproj"
 
 marker="$(mktemp "${TMPDIR:-/tmp}/fw-runtime.XXXXXX")"
 rm -f "$marker"

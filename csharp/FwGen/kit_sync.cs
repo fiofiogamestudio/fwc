@@ -25,9 +25,7 @@ static class KitSync
     {
         if (!config.HasUseSection())
         {
-            CleanCompat(root, config);
-            Console.WriteLine("fw sync skipped: [use] is not set (compat mode)");
-            return;
+            throw new InvalidOperationException("fw.toml requires [use].game and [use].host before sync");
         }
 
         var plan = CreatePlan(root, config);
@@ -117,25 +115,6 @@ static class KitSync
             inputs.OrderBy(path => path, StringComparer.Ordinal).ToArray(),
             files.OrderBy(file => file.Path, StringComparer.Ordinal).ToArray()
         );
-    }
-
-    private static void CleanCompat(string root, FwConfig config)
-    {
-        var fwRoot = ResolveFwRoot(root, config);
-        var batch = new GenerationBatch(root);
-        StageRecordedDeletes(batch, root, config, new HashSet<string>(PathComparer()));
-        var projectionRoot = config.GodotFwDir(root);
-        if (Directory.Exists(projectionRoot))
-        {
-            foreach (var path in Directory.GetFiles(projectionRoot, "*", SearchOption.AllDirectories))
-            {
-                batch.StageDelete(path);
-            }
-        }
-        batch.StageDelete(config.GameKitPropsPath(root));
-        batch.StageDelete(config.HostKitPropsPath(root));
-        batch.StageDelete(Path.Combine(fwRoot, "scripts", ".gdignore"));
-        batch.Commit();
     }
 
     private static void StageRecordedDeletes(

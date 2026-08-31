@@ -159,6 +159,10 @@ static class SystemTests
             Write(root, "fw.toml", """
                 [gen]
                 csharp = "../outside"
+
+                [use]
+                game = []
+                host = []
                 """);
             var config = FwConfig.Load(root);
             Throws(() => config.GenerationManifestPath(root), "escapes project root");
@@ -168,6 +172,10 @@ static class SystemTests
             Write(root, "fw.toml", """
                 [gen]
                 fwe = "../outside"
+
+                [use]
+                game = []
+                host = []
                 """);
             var config = FwConfig.Load(root);
             Throws(() => config.ConfigFwePath(root), "escapes project root");
@@ -176,6 +184,11 @@ static class SystemTests
 
     private static void TestFwConfigKitUse()
     {
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", "[project]\nname = \"audit\"\n");
+            Throws(() => FwConfig.Load(root), "missing required [use] section");
+        });
         WithTempDir(root =>
         {
             Write(root, "fw.toml", """
@@ -328,21 +341,6 @@ static class SystemTests
                 "updated game refs"
             );
 
-            Write(root, "fw.toml", """
-                [gen]
-                csharp = "csharp/_gen"
-                [script]
-                gdscript = "scripts"
-                [dotnet]
-                fwgen = "fw/csharp/FwGen/FwGen.csproj"
-                """);
-            config = FwConfig.Load(root);
-            KitSync.Run(root, config);
-            True(!Directory.GetFiles(config.GodotFwDir(root), "*", SearchOption.AllDirectories).Any(), "compat projection removed");
-            True(!File.Exists(config.GameKitPropsPath(root)), "compat game props removed");
-            True(!File.Exists(config.HostKitPropsPath(root)), "compat host props removed");
-            True(!File.Exists(Path.Combine(root, "fw/scripts/.gdignore")), "compat source scripts visible");
-            True(!File.Exists(movedProjection), "compat removes recorded projection root");
         });
     }
 
@@ -371,17 +369,24 @@ static class SystemTests
                 [dotnet]
                 game = "audit.csproj"
                 fwgen = "fw/csharp/FwGen/FwGen.csproj"
+
+                [use]
+                game = []
+                host = []
                 """);
             Write(root, "fw/csharp/FwGen/source.cs", "class Source {}\n");
             Write(root, "fw/csharp/FwGen/FwGen.csproj", "<Project />\n");
             Write(root, "fw/csharp/Directory.Build.props", "<Project />\n");
             Write(root, "fw/Directory.Build.props", "<Project />\n");
+            Write(root, "fw/core/cs/Fw.Core.csproj", "<Project />\n");
+            Write(root, "fw/kit/.keep", "");
             Write(root, "schema/systems.toml", "systems\n");
             Write(root, "schema/bridge/value.proto", "syntax = \"proto3\";\n");
             Write(root, "schema/config/game.proto", "syntax = \"proto3\";\n");
             Write(root, "data/config/game.csv.txt", "key\ndefault\n");
 
             var config = FwConfig.Load(root);
+            KitSync.Run(root, config);
             var outputs = new[]
             {
                 config.GodotSystemsGdPath(root),

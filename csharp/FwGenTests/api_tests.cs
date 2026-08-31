@@ -202,8 +202,8 @@ static class ApiTests
                 }
             }
             throw new InvalidOperationException(
-                $"FwRuntime public API changed at character {mismatch} (expected length {expected.Length}, actual length {actual.Length}). "
-                + $"Review compatibility, then update {path}.\n--- actual ---\n{actual}"
+                $"Fw module public API changed at character {mismatch} (expected length {expected.Length}, actual length {actual.Length}). "
+                + $"Review the API change, then update {path}.\n--- actual ---\n{actual}"
             );
         }
     }

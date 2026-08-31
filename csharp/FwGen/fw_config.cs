@@ -65,12 +65,12 @@ sealed class FwConfig
 
     public IReadOnlyList<string> GameKits()
     {
-        return Values("use", "game", KitIds);
+        return Values("use", "game", []);
     }
 
     public IReadOnlyList<string> HostKits()
     {
-        return Values("use", "host", KitIds);
+        return Values("use", "host", []);
     }
 
     public string PathValue(string root, string section, string key, string fallback)
@@ -302,14 +302,15 @@ sealed class FwConfig
         }
 
         var config = new FwConfig(sections, lists);
-        if (config.HasUseSection())
+        if (!config.HasUseSection())
         {
-            foreach (var key in new[] { "game", "host" })
+            throw new InvalidOperationException($"{path} missing required [use] section");
+        }
+        foreach (var key in new[] { "game", "host" })
+        {
+            if (!config.HasValues("use", key))
             {
-                if (!config.HasValues("use", key))
-                {
-                    throw new InvalidOperationException($"{path} missing [use].{key} string array");
-                }
+                throw new InvalidOperationException($"{path} missing [use].{key} string array");
             }
         }
         config.ValidateKitList(path, "game");

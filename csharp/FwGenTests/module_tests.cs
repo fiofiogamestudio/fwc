@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Xml.Linq;
 using static TestKit;
 
@@ -8,7 +7,7 @@ static class ModuleTests
     [
         new("C# kit dependency graph", TestProjectGraph),
         new("optional packages stay in their kits", TestPackageBounds),
-        new("compat aggregate forwards public types", TestCompatForwarders),
+        new("legacy aggregate is absent", TestNoLegacyAggregate),
     ];
 
     private static void TestProjectGraph()
@@ -23,6 +22,9 @@ static class ModuleTests
         var lua = Project(root, "kit/lua/cs/Fw.Lua.csproj");
         var train = Project(root, "tool/train/cs/Fw.AI.Train.csproj");
         var e2e = Project(root, "tool/e2e/cs/Fw.Test.csproj");
+        var gen = Project(root, "csharp/FwGen/FwGen.csproj");
+        var tests = Project(root, "csharp/FwGenTests/FwGenTests.csproj");
+        var verify = Project(root, "csharp/Fw.Verify/Fw.Verify.csproj");
 
         ExactRefs(core, []);
         ExactRefs(anim, [core]);
@@ -33,11 +35,9 @@ static class ModuleTests
         ExactRefs(lua, [core]);
         ExactRefs(train, [core, ai]);
         ExactRefs(e2e, [core, net]);
-
-        var runtime = Project(root, "csharp/FwRuntime/FwRuntime.csproj");
-        var runtimeText = File.ReadAllText(runtime);
-        True(runtimeText.Contains("<EnableDefaultCompileItems>false</EnableDefaultCompileItems>", StringComparison.Ordinal), "compat runtime has no sources");
-        ExactRefs(runtime, [core, anim, net, lite, rec, ai, lua, train, e2e]);
+        ExactRefs(gen, [core]);
+        ExactRefs(tests, [gen, core, anim, net, lite, rec, ai, lua, train, e2e]);
+        ExactRefs(verify, [core, anim, net, lite, rec, ai, lua, train, e2e]);
     }
 
     private static void TestPackageBounds()
@@ -67,34 +67,22 @@ static class ModuleTests
         );
     }
 
-    private static void TestCompatForwarders()
+    private static void TestNoLegacyAggregate()
     {
-        var moduleNames = new[]
-        {
-            "Fw.Core",
-            "Fw.Anim",
-            "Fw.Net",
-            "Fw.Net.Lite",
-            "Fw.Rec",
-            "Fw.AI",
-            "Fw.Lua",
-            "Fw.AI.Train",
-            "Fw.Test",
-        };
-        var expected = moduleNames
-            .Select(name => Assembly.Load(new AssemblyName(name)))
-            .SelectMany(assembly => assembly.GetExportedTypes())
-            .Where(type => type.Namespace?.StartsWith("Fw.Rt.", StringComparison.Ordinal) == true)
-            .Select(type => type.FullName!)
-            .ToHashSet(StringComparer.Ordinal);
-        var compat = Assembly.Load(new AssemblyName("FwRuntime"));
-        var forwarded = compat.GetForwardedTypes()
-            .Select(type => type.FullName!)
-            .ToHashSet(StringComparer.Ordinal);
-
-        True(forwarded.SetEquals(expected), "compat forwards every public Fw.Rt type");
-        var resolved = Type.GetType("Fw.Rt.Systems.SystemRuntime, FwRuntime", throwOnError: false);
-        True(resolved?.Assembly.GetName().Name == "Fw.Core", "legacy assembly-qualified type resolves");
+        var root = FrameworkRoot();
+        True(
+            !File.Exists(Path.Combine(root, "csharp", "FwRuntime", "FwRuntime.csproj")),
+            "legacy aggregate project removed"
+        );
+        var references = Directory.GetFiles(root, "*.csproj", SearchOption.AllDirectories)
+            .SelectMany(project => XDocument.Load(project).Descendants("ProjectReference"))
+            .Select(node => node.Attribute("Include")?.Value ?? "")
+            .Where(value => value.Length > 0)
+            .ToArray();
+        True(
+            !references.Any(value => value.Contains("FwRuntime", StringComparison.OrdinalIgnoreCase)),
+            "no project references legacy aggregate"
+        );
     }
 
     private static void ExactRefs(string project, IReadOnlyCollection<string> expected)

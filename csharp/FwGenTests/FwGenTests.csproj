@@ -7,7 +7,15 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../FwGen/FwGen.csproj" />
-    <ProjectReference Include="../FwRuntime/FwRuntime.csproj" />
+    <ProjectReference Include="../../core/cs/Fw.Core.csproj" />
+    <ProjectReference Include="../../kit/anim/cs/Fw.Anim.csproj" />
+    <ProjectReference Include="../../kit/net/cs/Fw.Net.csproj" />
+    <ProjectReference Include="../../kit/net/cs/lite/Fw.Net.Lite.csproj" />
+    <ProjectReference Include="../../kit/rec/cs/Fw.Rec.csproj" />
+    <ProjectReference Include="../../kit/ai/cs/Fw.AI.csproj" />
+    <ProjectReference Include="../../kit/lua/cs/Fw.Lua.csproj" />
+    <ProjectReference Include="../../tool/train/cs/Fw.AI.Train.csproj" />
+    <ProjectReference Include="../../tool/e2e/cs/Fw.Test.csproj" />
   </ItemGroup>
   <ItemGroup>
     <None Include="../../tests/contracts/csharp_api.txt" Link="contracts/csharp_api.txt" CopyToOutputDirectory="PreserveNewest" />

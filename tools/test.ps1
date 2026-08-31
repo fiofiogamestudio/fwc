@@ -186,13 +186,11 @@ try {
         }
     }
 
-    & dotnet build (Join-Path $FwRoot "csharp\FwRuntime\FwRuntime.csproj") -c Release
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & dotnet build (Join-Path $FwRoot "csharp\FwGen\FwGen.csproj") -c Release
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & dotnet run --project (Join-Path $FwRoot "csharp\FwGenTests\FwGenTests.csproj") -c Release
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-    & dotnet run --project (Join-Path $FwRoot "csharp\FwRuntime.Verify\FwRuntime.Verify.csproj") -c Release
+    & dotnet run --project (Join-Path $FwRoot "csharp\Fw.Verify\Fw.Verify.csproj") -c Release
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     New-Item -ItemType Directory -Path $TestRoot -Force | Out-Null

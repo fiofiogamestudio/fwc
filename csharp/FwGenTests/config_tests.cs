@@ -338,6 +338,10 @@ static class ConfigTests
                 name = "audit"
                 [gen]
                 fwe = "tools/fwe/_gen"
+
+                [use]
+                game = []
+                host = []
                 """);
             Write(root, "schema/config/item.proto", """
                 syntax = "proto3";

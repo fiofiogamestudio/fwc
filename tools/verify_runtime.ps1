@@ -11,7 +11,7 @@ $ResolvedProjectRoot = if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
     (Resolve-Path $ProjectRoot).Path
 }
 
-& dotnet run --project (Join-Path $FwRoot "csharp/FwRuntime.Verify/FwRuntime.Verify.csproj")
+& dotnet run --project (Join-Path $FwRoot "csharp/Fw.Verify/Fw.Verify.csproj")
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
