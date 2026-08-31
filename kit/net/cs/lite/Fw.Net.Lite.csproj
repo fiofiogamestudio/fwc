@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fw.Net.Lite</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fw.Net.csproj" />
+    <PackageReference Include="LiteNetLib" Version="2.1.4" />
+  </ItemGroup>
+</Project>

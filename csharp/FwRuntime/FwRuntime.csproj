@@ -1,10 +1,22 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <AssemblyName>FwRuntime</AssemblyName>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="LiteNetLib" Version="2.1.4" />
-    <PackageReference Include="MoonSharp" Version="2.0.0" />
+    <Compile Include="type_forwards.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../core/cs/Fw.Core.csproj" />
+    <ProjectReference Include="../../kit/anim/cs/Fw.Anim.csproj" />
+    <ProjectReference Include="../../kit/net/cs/Fw.Net.csproj" />
+    <ProjectReference Include="../../kit/net/cs/lite/Fw.Net.Lite.csproj" />
+    <ProjectReference Include="../../kit/rec/cs/Fw.Rec.csproj" />
+    <ProjectReference Include="../../kit/ai/cs/Fw.AI.csproj" />
+    <ProjectReference Include="../../kit/lua/cs/Fw.Lua.csproj" />
+    <ProjectReference Include="../../tool/train/cs/Fw.AI.Train.csproj" />
+    <ProjectReference Include="../../tool/e2e/cs/Fw.Test.csproj" />
   </ItemGroup>
 </Project>

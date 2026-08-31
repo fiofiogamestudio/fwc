@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Fw.Net</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../../core/cs/Fw.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="lite/**/*.cs" />
+  </ItemGroup>
+</Project>
