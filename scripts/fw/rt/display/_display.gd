@@ -16,6 +16,7 @@ var _window: Window = null
 var _size_options: Array[Vector2i] = []
 var _baseline: Dictionary = {}
 var _pending: Dictionary = {}
+var _windowed_size := Vector2i.ZERO
 var _settings_path := ""
 var _settings_section := "display"
 
@@ -29,7 +30,8 @@ func setup(
 	_window = window
 	set_size_options(DEFAULT_SIZE_OPTIONS if size_options.is_empty() else size_options)
 	if _window != null:
-		_add_size_option(_window.size)
+		_windowed_size = _window.size
+		_add_size_option(_windowed_size)
 	configure_persistence(settings_path)
 	begin_edit()
 	if auto_load and not _settings_path.is_empty():
@@ -130,7 +132,7 @@ func apply(save: bool = true) -> bool:
 		return false
 	var requested := _normalized_settings(_pending)
 	_apply_settings(requested)
-	_baseline = _capture_applied_settings(requested)
+	_baseline = _capture_applied_settings()
 	_pending = _baseline.duplicate(true)
 	if save and not _settings_path.is_empty():
 		save_current()
@@ -186,7 +188,7 @@ func load_saved(apply_now: bool = false) -> bool:
 	if apply_now and _window != null:
 		var requested := _normalized_settings(_pending)
 		_apply_settings(requested)
-		_baseline = _capture_applied_settings(requested)
+		_baseline = _capture_applied_settings()
 		_pending = _baseline.duplicate(true)
 	_emit_changed()
 	return true
@@ -196,10 +198,10 @@ func current_settings() -> Dictionary:
 	if _window == null:
 		return {}
 	var window_id := _window.get_window_id()
+	var fullscreen := _is_fullscreen()
 	return {
-		"size": _window.size,
-		"fullscreen": _window.mode == Window.MODE_FULLSCREEN
-			or _window.mode == Window.MODE_EXCLUSIVE_FULLSCREEN,
+		"size": _windowed_size if fullscreen else _window.size,
+		"fullscreen": fullscreen,
 		"vsync": DisplayServer.window_get_vsync_mode(window_id)
 			!= DisplayServer.VSYNC_DISABLED,
 	}
@@ -207,12 +209,17 @@ func current_settings() -> Dictionary:
 
 func _apply_settings(settings: Dictionary) -> void:
 	var fullscreen := bool(settings.get("fullscreen", false))
-	_window.mode = Window.MODE_FULLSCREEN if fullscreen else Window.MODE_WINDOWED
-	if not fullscreen:
-		var target_size := _to_size(settings.get("size", _window.size))
+	var target_size := _to_size(settings.get("size", _windowed_size))
+	if fullscreen:
+		if target_size.x > 0 and target_size.y > 0:
+			_windowed_size = target_size
+		_window.mode = Window.MODE_EXCLUSIVE_FULLSCREEN
+	else:
+		_window.mode = Window.MODE_WINDOWED
 		if target_size.x > 0 and target_size.y > 0:
 			_window.size = target_size
-			_center_window(target_size)
+			_windowed_size = _window.size
+			_center_window(_windowed_size)
 	var vsync_mode := DisplayServer.VSYNC_ENABLED \
 		if bool(settings.get("vsync", true)) else DisplayServer.VSYNC_DISABLED
 	DisplayServer.window_set_vsync_mode(vsync_mode, _window.get_window_id())
@@ -261,11 +268,13 @@ func _normalized_settings(settings: Dictionary) -> Dictionary:
 	}
 
 
-func _capture_applied_settings(requested: Dictionary) -> Dictionary:
-	var observed := _normalized_settings(current_settings())
-	if bool(requested.get("fullscreen", false)):
-		observed["size"] = _to_size(requested.get("size", Vector2i.ZERO))
-	return observed
+func _capture_applied_settings() -> Dictionary:
+	return _normalized_settings(current_settings())
+
+
+func _is_fullscreen() -> bool:
+	return _window.mode == Window.MODE_FULLSCREEN \
+		or _window.mode == Window.MODE_EXCLUSIVE_FULLSCREEN
 
 
 func _emit_changed() -> void:

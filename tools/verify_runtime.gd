@@ -438,6 +438,14 @@ func _verify_audio_and_display() -> String:
 	display.cancel()
 	if display.has_changes():
 		return "FDisplay did not cancel pending changes."
+	display.set_pending_fullscreen(false)
+	display.set_pending_size(Vector2i(1280, 720))
+	if not display.apply(false):
+		return "FDisplay could not apply windowed settings."
+	if root.size != Vector2i(1280, 720):
+		return "FDisplay did not apply the requested window size: %s." % root.size
+	if DisplayServer.get_name() != "headless" and root.mode != Window.MODE_WINDOWED:
+		return "FDisplay did not enter windowed mode: %s." % root.mode
 	return ""
 
 
