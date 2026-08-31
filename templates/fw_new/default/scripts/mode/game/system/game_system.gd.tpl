@@ -1,7 +1,7 @@
-extends "res://fw/scripts/fw/rt/system/_base_system.gd"
+extends "res://scripts/_fw/fw/rt/system/_base_system.gd"
 
 const GAME_BRIDGE_PATH: String = "res://csharp/bridge/game_bridge.cs"
-const FCSharpScript = preload("res://fw/scripts/fw/rt/_csharp.gd")
+const FCSharpScript = preload("res://scripts/_fw/fw/rt/_csharp.gd")
 
 var _bridge: Variant = null
 

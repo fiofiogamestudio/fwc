@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://fw/scripts/fw/vu/ui/form/_form.gd" id="1_script"]
+[ext_resource type="Script" path="res://scripts/_fw/fw/vu/ui/form/_form.gd" id="1_script"]
 
 [node name="GameForm" type="Control"]
 layout_mode = 3

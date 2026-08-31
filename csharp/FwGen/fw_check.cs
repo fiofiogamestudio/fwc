@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 
 static class FwCheck
 {
@@ -13,6 +14,51 @@ static class FwCheck
             : fullParent + Path.DirectorySeparatorChar;
         return fullPath.Equals(fullParent, comparison)
             || fullPath.StartsWith(parentPrefix, comparison);
+    }
+
+    internal static bool ImportsProject(string projectPath, string expectedPath)
+    {
+        var projectDir = Path.GetDirectoryName(Path.GetFullPath(projectPath))
+            ?? throw new InvalidOperationException($"project has no directory: {projectPath}");
+        var expected = Path.GetFullPath(expectedPath);
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var document = XDocument.Load(projectPath, LoadOptions.None);
+        foreach (var import in document.Descendants().Where(node => node.Name.LocalName == "Import"))
+        {
+            var condition = import.Attribute("Condition")?.Value.Trim();
+            if (condition != null
+                && (condition.Equals("false", StringComparison.OrdinalIgnoreCase)
+                    || condition.Equals("'false'", StringComparison.OrdinalIgnoreCase)
+                    || condition == "0"))
+            {
+                continue;
+            }
+
+            var value = import.Attribute("Project")?.Value;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+            var expanded = value
+                .Replace("$(MSBuildProjectDirectory)", projectDir, StringComparison.OrdinalIgnoreCase)
+                .Replace(
+                    "$(MSBuildThisFileDirectory)",
+                    projectDir + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase
+                );
+            if (expanded.Contains("$(", StringComparison.Ordinal))
+            {
+                continue;
+            }
+            var candidate = Path.GetFullPath(Path.IsPathFullyQualified(expanded)
+                ? expanded
+                : Path.Combine(projectDir, expanded));
+            if (candidate.Equals(expected, comparison))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static readonly string[] GdSuffixes =
@@ -214,6 +260,11 @@ static class FwCheck
             RequireConfigValue("script", "csharp");
             RequireConfigValue("dotnet", "game");
             RequireConfigValue("dotnet", "fwgen");
+            if (_config.HasUseSection())
+            {
+                RequireConfigValues("use", "game");
+                RequireConfigValues("use", "host");
+            }
             try
             {
                 Craft.ValidateProjectName(_config.ProjectName());
@@ -262,6 +313,10 @@ static class FwCheck
             RequireFile(propsPath, "Directory.Build.props");
             RequireFile(gameProject, "[dotnet].game");
             RequireFile(generatorProject, "[dotnet].fwgen");
+            if (_config.HasHostProject())
+            {
+                RequireFile(_config.HostProjectPath(_root), "[dotnet].host");
+            }
 
             string pinnedGodotSdk = "";
 
@@ -316,6 +371,11 @@ static class FwCheck
             if (File.Exists(gameProject))
             {
                 string project = File.ReadAllText(gameProject, Encoding.UTF8);
+                if (_config.HasUseSection()
+                    && !HasProjectImport(gameProject, _config.GameKitPropsPath(_root)))
+                {
+                    Error($"{Rel(gameProject)} must import csharp/_gen/_fw_game.props");
+                }
                 var sdkMatch = System.Text.RegularExpressions.Regex.Match(
                     project,
                     "<Project\\b[^>]*\\bSdk=[\"']Godot\\.NET\\.Sdk(?:/([^\"']+))?[\"']"
@@ -347,11 +407,21 @@ static class FwCheck
                 }
             }
 
+            if (_config.HasHostProject() && File.Exists(_config.HostProjectPath(_root)))
+            {
+                var hostProject = _config.HostProjectPath(_root);
+                if (!HasProjectImport(hostProject, _config.HostKitPropsPath(_root)))
+                {
+                    Error($"{Rel(hostProject)} must import csharp/_gen/_fw_host.props");
+                }
+            }
+
             string? generatorDir = Path.GetDirectoryName(generatorProject);
             string? frameworkCSharpDir = generatorDir == null ? null : Directory.GetParent(generatorDir)?.FullName;
-            string frameworkPropsPath = frameworkCSharpDir == null
+            string? frameworkRoot = frameworkCSharpDir == null ? null : Directory.GetParent(frameworkCSharpDir)?.FullName;
+            string frameworkPropsPath = frameworkRoot == null
                 ? ""
-                : Path.Combine(frameworkCSharpDir, "Directory.Build.props");
+                : Path.Combine(frameworkRoot, "Directory.Build.props");
             if (frameworkPropsPath.Length > 0 && File.Exists(frameworkPropsPath) && targetFramework.Length > 0)
             {
                 string frameworkProps = File.ReadAllText(frameworkPropsPath, Encoding.UTF8);
@@ -366,6 +436,19 @@ static class FwCheck
                 {
                     Error($"{Rel(frameworkPropsPath)} TargetFramework must match Directory.Build.props ({targetFramework})");
                 }
+            }
+        }
+
+        private bool HasProjectImport(string projectPath, string expectedPath)
+        {
+            try
+            {
+                return ImportsProject(projectPath, expectedPath);
+            }
+            catch (Exception ex) when (ex is IOException or System.Xml.XmlException or InvalidOperationException)
+            {
+                Error($"invalid {Rel(projectPath)}: {ex.Message}");
+                return false;
             }
         }
 
@@ -565,6 +648,10 @@ static class FwCheck
         {
             CheckGeneratedDir(_config.GodotGenDir(_root));
             CheckGeneratedDir(Path.GetDirectoryName(_config.CoreSystemsCsPath(_root)) ?? Path.Combine(_root, "csharp", "_gen"));
+            if (_config.HasUseSection())
+            {
+                CheckGeneratedDir(_config.GodotFwDir(_root));
+            }
             if (_config.HasFweGen())
             {
                 CheckGeneratedDir(_config.FweGenDir(_root));
@@ -575,11 +662,12 @@ static class FwCheck
         {
             string gdRoot = _config.PathValue(_root, "script", "gdscript", "scripts");
             string gdGen = _config.GodotGenDir(_root);
+            string gdFw = _config.GodotFwDir(_root);
             if (Directory.Exists(gdRoot))
             {
                 foreach (string file in Directory.GetFiles(gdRoot, "*.gd", SearchOption.AllDirectories))
                 {
-                    if (IsUnder(file, gdGen))
+                    if (IsUnder(file, gdGen) || IsUnder(file, gdFw))
                     {
                         continue;
                     }
@@ -805,6 +893,14 @@ static class FwCheck
             if (string.IsNullOrWhiteSpace(_config.Value(section, key, "")))
             {
                 Error($"fw.toml [{section}].{key} cannot be empty");
+            }
+        }
+
+        private void RequireConfigValues(string section, string key)
+        {
+            if (!_config.HasValues(section, key))
+            {
+                Error($"fw.toml missing [{section}].{key}");
             }
         }
 

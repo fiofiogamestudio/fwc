@@ -7,7 +7,7 @@ param(
 
     [string]$GeneratorProject = "",
 
-    [string[]]$GenCommands = @("system", "bridge", "config", "config_check", "check"),
+    [string[]]$GenCommands = @("sync", "system", "bridge", "config", "config_check", "check"),
 
     [string[]]$ReleaseGenCommands = @("config_pack")
 )

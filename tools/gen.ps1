@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("system", "bridge", "config", "config_check", "config_pack", "check")]
+    [ValidateSet("sync", "system", "bridge", "config", "config_check", "config_pack", "check")]
     [string]$Command,
 
     [string]$ProjectRoot = "",

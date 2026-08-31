@@ -1,8 +1,8 @@
 class_name GameLogic
-extends "res://fw/scripts/fw/vu/ui/form/_form_logic.gd"
+extends "res://scripts/_fw/fw/vu/ui/form/_form_logic.gd"
 
 const FORM_ID: StringName = &"game_form"
-const FViewModelScript = preload("res://fw/scripts/fw/vu/ui/_view_model.gd")
+const FViewModelScript = preload("res://scripts/_fw/fw/vu/ui/_view_model.gd")
 
 var _context: Variant = null
 var _system_context: Variant = null

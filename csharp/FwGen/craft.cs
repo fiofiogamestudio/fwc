@@ -25,6 +25,7 @@ static class Craft
         BridgeGen.Generate(root, nextConfig);
         ConfigGen.Generate(root, nextConfig);
         ConfigGen.Check(root, nextConfig);
+        KitSync.Run(root, nextConfig);
         FwCheck.Run(root, nextConfig);
         Console.WriteLine($"created fw project scaffold: {root}");
     }

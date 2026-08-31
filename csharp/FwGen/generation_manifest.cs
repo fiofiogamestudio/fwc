@@ -93,6 +93,59 @@ static class GenerationManifest
         );
     }
 
+    internal static void StageSync(
+        GenerationBatch batch,
+        string root,
+        FwConfig config,
+        IEnumerable<string> inputs,
+        IEnumerable<string> outputs
+    )
+    {
+        Stage(batch, root, config, "sync", inputs, outputs);
+    }
+
+    internal static IReadOnlyList<string> RecordedOutputs(string root, FwConfig config, string command)
+    {
+        var path = config.GenerationManifestPath(root);
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+
+        GenerationManifestModel model;
+        try
+        {
+            model = Load(path);
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+        if (model.Format != 1
+            || model.Commands == null
+            || !model.Commands.TryGetValue(command, out var section)
+            || section.Outputs == null)
+        {
+            return [];
+        }
+
+        var outputs = new List<string>();
+        foreach (var output in section.Outputs)
+        {
+            if (string.IsNullOrWhiteSpace(output.Path))
+            {
+                continue;
+            }
+            var fullPath = Path.GetFullPath(Path.Combine(
+                root,
+                output.Path.Replace('/', Path.DirectorySeparatorChar)
+            ));
+            EnsureInsideRoot(root, fullPath, $"generated manifest `{command}` output");
+            outputs.Add(fullPath);
+        }
+        return outputs.Distinct(PathComparer()).ToArray();
+    }
+
     public static void Verify(string root, FwConfig config)
     {
         var path = config.GenerationManifestPath(root);
@@ -134,6 +187,10 @@ static class GenerationManifest
             ConfigInputHash(root, config),
             ConfigOutputs(root, config)
         );
+        if (config.HasUseSection())
+        {
+            VerifySection(root, model, "sync", KitSync.Inputs(root, config), KitSync.Outputs(root, config));
+        }
     }
 
     private static IEnumerable<string> ConfigOutputs(string root, FwConfig config)
@@ -345,7 +402,8 @@ static class GenerationManifest
         }
         var inputs = Directory.GetFiles(generatorDir, "*.cs", SearchOption.TopDirectoryOnly)
             .Append(Path.Combine(generatorDir, "FwGen.csproj"))
-            .Append(Path.Combine(root, "fw", "csharp", "Directory.Build.props"));
+            .Append(Path.Combine(root, "fw", "csharp", "Directory.Build.props"))
+            .Append(Path.Combine(root, "fw", "Directory.Build.props"));
         return HashInputs(root, inputs);
     }
 
@@ -409,5 +467,10 @@ static class GenerationManifest
             return;
         }
         throw new InvalidOperationException($"{label} escapes project root: {fullPath}");
+    }
+
+    private static StringComparer PathComparer()
+    {
+        return OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
     }
 }

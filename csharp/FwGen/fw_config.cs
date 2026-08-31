@@ -3,6 +3,8 @@ using System.Text.RegularExpressions;
 
 sealed class FwConfig
 {
+    private static readonly string[] KitIds = ["app", "anim", "net", "rec", "ai", "lua"];
+
     private static readonly IReadOnlyDictionary<string, HashSet<string>> AllowedKeys =
         new Dictionary<string, HashSet<string>>(StringComparer.Ordinal)
         {
@@ -12,14 +14,20 @@ sealed class FwConfig
             ["data"] = new(StringComparer.Ordinal) { "config" },
             ["pack"] = new(StringComparer.Ordinal) { "config" },
             ["script"] = new(StringComparer.Ordinal) { "gdscript", "csharp" },
-            ["dotnet"] = new(StringComparer.Ordinal) { "game", "fwgen" },
+            ["dotnet"] = new(StringComparer.Ordinal) { "game", "host", "fwgen" },
+            ["use"] = new(StringComparer.Ordinal) { "game", "host" },
         };
 
     private readonly Dictionary<string, Dictionary<string, string>> _sections;
+    private readonly Dictionary<string, Dictionary<string, IReadOnlyList<string>>> _lists;
 
-    private FwConfig(Dictionary<string, Dictionary<string, string>> sections)
+    private FwConfig(
+        Dictionary<string, Dictionary<string, string>> sections,
+        Dictionary<string, Dictionary<string, IReadOnlyList<string>>> lists
+    )
     {
         _sections = sections;
+        _lists = lists;
     }
 
     public string Value(string section, string key, string fallback)
@@ -34,6 +42,35 @@ sealed class FwConfig
     public bool HasValue(string section, string key)
     {
         return _sections.TryGetValue(section, out var values) && values.ContainsKey(key);
+    }
+
+    public bool HasValues(string section, string key)
+    {
+        return _lists.TryGetValue(section, out var values) && values.ContainsKey(key);
+    }
+
+    public IReadOnlyList<string> Values(string section, string key, IReadOnlyList<string> fallback)
+    {
+        if (_lists.TryGetValue(section, out var values) && values.TryGetValue(key, out var value))
+        {
+            return value;
+        }
+        return fallback;
+    }
+
+    public bool HasUseSection()
+    {
+        return _lists.ContainsKey("use");
+    }
+
+    public IReadOnlyList<string> GameKits()
+    {
+        return Values("use", "game", KitIds);
+    }
+
+    public IReadOnlyList<string> HostKits()
+    {
+        return Values("use", "host", KitIds);
     }
 
     public string PathValue(string root, string section, string key, string fallback)
@@ -68,6 +105,16 @@ sealed class FwConfig
         return PathValue(root, "dotnet", "fwgen", "fw/csharp/FwGen/FwGen.csproj");
     }
 
+    public bool HasHostProject()
+    {
+        return HasValue("dotnet", "host");
+    }
+
+    public string HostProjectPath(string root)
+    {
+        return PathValue(root, "dotnet", "host", "Host.csproj");
+    }
+
     public string BridgeSchemaDir(string root)
     {
         return PathValue(root, "schema", "bridge", "schema/bridge");
@@ -91,6 +138,11 @@ sealed class FwConfig
     public string GodotGenDir(string root)
     {
         return PathValue(root, "gen", "gdscript", "scripts/_gen");
+    }
+
+    public string GodotFwDir(string root)
+    {
+        return Path.GetFullPath(Path.Combine(ScriptGdDir(root), "_fw"));
     }
 
     public string GodotSystemsGdPath(string root)
@@ -168,13 +220,24 @@ sealed class FwConfig
         return Path.GetFullPath(Path.Combine(CSharpGenRoot(root), "_fwgen_manifest.json"));
     }
 
+    public string GameKitPropsPath(string root)
+    {
+        return Path.GetFullPath(Path.Combine(CSharpGenDir(root), "_fw_game.props"));
+    }
+
+    public string HostKitPropsPath(string root)
+    {
+        return Path.GetFullPath(Path.Combine(CSharpGenDir(root), "_fw_host.props"));
+    }
+
     public static FwConfig Load(string root)
     {
         var path = Path.Combine(root, "fw.toml");
         var sections = new Dictionary<string, Dictionary<string, string>>(StringComparer.Ordinal);
+        var lists = new Dictionary<string, Dictionary<string, IReadOnlyList<string>>>(StringComparer.Ordinal);
         if (!File.Exists(path))
         {
-            return new FwConfig(sections);
+            return new FwConfig(sections, lists);
         }
 
         var section = "";
@@ -200,26 +263,58 @@ sealed class FwConfig
                 {
                     throw new InvalidOperationException($"{path}:{lineNo} duplicate fw.toml section [{section}]");
                 }
+                lists.Add(section, new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal));
                 continue;
             }
 
-            var valueMatch = Regex.Match(line, @"^([A-Za-z0-9_]+)\s*=\s*""(.*)""$");
-            if (!valueMatch.Success || section.Length == 0)
+            var assignmentMatch = Regex.Match(line, @"^([A-Za-z0-9_]+)\s*=\s*(.+)$");
+            if (!assignmentMatch.Success || section.Length == 0)
             {
-                throw new InvalidOperationException($"{path}:{lineNo} expected `key = \"value\"` under a known section");
+                throw new InvalidOperationException($"{path}:{lineNo} expected an assignment under a known section");
             }
-            var key = valueMatch.Groups[1].Value;
+            var key = assignmentMatch.Groups[1].Value;
             if (!AllowedKeys[section].Contains(key))
             {
                 throw new InvalidOperationException($"{path}:{lineNo} unsupported fw.toml key [{section}].{key}");
             }
-            if (!sections[section].TryAdd(key, valueMatch.Groups[2].Value))
+            if (sections[section].ContainsKey(key) || lists[section].ContainsKey(key))
             {
                 throw new InvalidOperationException($"{path}:{lineNo} duplicate fw.toml key [{section}].{key}");
             }
+
+            var raw = assignmentMatch.Groups[2].Value.Trim();
+            if (raw.StartsWith("[", StringComparison.Ordinal))
+            {
+                if (!string.Equals(section, "use", StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException($"{path}:{lineNo} arrays are only supported under [use]");
+                }
+                lists[section].Add(key, ParseStringArray(path, lineNo, raw));
+                continue;
+            }
+
+            var valueMatch = Regex.Match(raw, "^\"([^\"]*)\"$");
+            if (!valueMatch.Success)
+            {
+                throw new InvalidOperationException($"{path}:{lineNo} expected `key = \"value\"`");
+            }
+            sections[section].Add(key, valueMatch.Groups[1].Value);
         }
 
-        return new FwConfig(sections);
+        var config = new FwConfig(sections, lists);
+        if (config.HasUseSection())
+        {
+            foreach (var key in new[] { "game", "host" })
+            {
+                if (!config.HasValues("use", key))
+                {
+                    throw new InvalidOperationException($"{path} missing [use].{key} string array");
+                }
+            }
+        }
+        config.ValidateKitList(path, "game");
+        config.ValidateKitList(path, "host");
+        return config;
     }
 
     private static string StripComment(string line)
@@ -242,5 +337,105 @@ sealed class FwConfig
     private string CSharpGenRoot(string root)
     {
         return PathValue(root, "gen", "csharp", "csharp/_gen");
+    }
+
+    private string CSharpGenDir(string root)
+    {
+        return CSharpGenRoot(root);
+    }
+
+    private string ScriptGdDir(string root)
+    {
+        return PathValue(root, "script", "gdscript", "scripts");
+    }
+
+    private void ValidateKitList(string path, string key)
+    {
+        if (!_lists.TryGetValue("use", out var use) || !use.TryGetValue(key, out var values))
+        {
+            return;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var value in values)
+        {
+            if (string.Equals(value, "core", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"{path} [use].{key} must not list core; core is automatic");
+            }
+            if (!KitIds.Contains(value, StringComparer.Ordinal))
+            {
+                throw new InvalidOperationException($"{path} [use].{key} has unknown kit `{value}`");
+            }
+            if (string.Equals(key, "host", StringComparison.Ordinal)
+                && string.Equals(value, "app", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"{path} [use].host cannot use app; app is projected only for game");
+            }
+            if (!seen.Add(value))
+            {
+                throw new InvalidOperationException($"{path} [use].{key} repeats kit `{value}`");
+            }
+        }
+    }
+
+    private static IReadOnlyList<string> ParseStringArray(string path, int lineNo, string raw)
+    {
+        if (!raw.EndsWith("]", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException($"{path}:{lineNo} unterminated string array");
+        }
+
+        var values = new List<string>();
+        var inner = raw[1..^1];
+        var index = 0;
+        while (true)
+        {
+            SkipSpace(inner, ref index);
+            if (index == inner.Length)
+            {
+                return values.AsReadOnly();
+            }
+            if (inner[index] != '"')
+            {
+                throw new InvalidOperationException($"{path}:{lineNo} [use] values must be quoted strings");
+            }
+
+            var end = inner.IndexOf('"', index + 1);
+            if (end < 0)
+            {
+                throw new InvalidOperationException($"{path}:{lineNo} unterminated string in array");
+            }
+            var value = inner[(index + 1)..end];
+            if (value.Length == 0)
+            {
+                throw new InvalidOperationException($"{path}:{lineNo} [use] kit id cannot be empty");
+            }
+            values.Add(value);
+            index = end + 1;
+            SkipSpace(inner, ref index);
+            if (index == inner.Length)
+            {
+                return values.AsReadOnly();
+            }
+            if (inner[index] != ',')
+            {
+                throw new InvalidOperationException($"{path}:{lineNo} expected comma between [use] kits");
+            }
+            index += 1;
+            SkipSpace(inner, ref index);
+            if (index == inner.Length)
+            {
+                throw new InvalidOperationException($"{path}:{lineNo} trailing comma is not supported in [use]");
+            }
+        }
+    }
+
+    private static void SkipSpace(string text, ref int index)
+    {
+        while (index < text.Length && char.IsWhiteSpace(text[index]))
+        {
+            index += 1;
+        }
     }
 }

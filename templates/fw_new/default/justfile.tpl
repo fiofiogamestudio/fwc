@@ -3,9 +3,13 @@ set windows-shell := ["powershell.exe", "-NoLogo", "-NoProfile", "-Command"]
 default: build
 
 gen:
+    just sync
     just gen_system
     just gen_bridge
     just gen_config
+
+sync:
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\fw\tools\sync.ps1"
 
 gen_system:
     powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ".\\fw\\tools\\gen.ps1" system

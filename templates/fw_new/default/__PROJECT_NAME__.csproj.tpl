@@ -16,7 +16,8 @@
     <None Remove=".godot/**" />
     <None Remove=".godot\**" />
   </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="fw/csharp/FwRuntime/FwRuntime.csproj" />
-  </ItemGroup>
+  <Import Project="csharp/_gen/_fw_game.props" Condition="Exists('csharp/_gen/_fw_game.props')" />
+  <Target Name="RequireFwSync" BeforeTargets="PrepareForBuild" Condition="!Exists('csharp/_gen/_fw_game.props')">
+    <Error Text="Fw kit references are missing. Run fw sync first." />
+  </Target>
 </Project>

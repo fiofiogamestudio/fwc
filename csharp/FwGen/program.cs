@@ -35,6 +35,9 @@ static class FwGen
                 case "config_pack":
                     ConfigGen.Pack(root, config);
                     break;
+                case "sync":
+                    KitSync.Run(root, config);
+                    break;
                 case "check":
                     FwCheck.Run(root, config);
                     break;

@@ -20,6 +20,10 @@ config = "pack/config"
 gdscript = "scripts"
 csharp = "csharp"
 
+[use]
+game = ["app", "anim", "net", "rec"]
+host = ["anim", "net", "rec", "ai"]
+
 [dotnet]
 game = "__PROJECT_NAME__.csproj"
 fwgen = "fw/csharp/FwGen/FwGen.csproj"

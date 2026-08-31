@@ -7,7 +7,7 @@ CSHARP_PROJECT=""
 GENERATOR_PROJECT=""
 CONFIGURATION="Debug"
 RELEASE="false"
-GEN_COMMANDS=(${FW_GEN_COMMANDS:-system bridge config config_check check})
+GEN_COMMANDS=(${FW_GEN_COMMANDS:-sync system bridge config config_check check})
 RELEASE_GEN_COMMANDS=(${FW_RELEASE_GEN_COMMANDS:-config_pack})
 
 get_fw_toml_value() {
