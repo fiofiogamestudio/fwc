@@ -27,7 +27,7 @@
 | `EPoolSystem` | 0 个文件 | `FPool` | fw 原有能力已加固：活动/空闲跟踪、幂等 warmup、容量、重复回收保护、全量清理 |
 | `ETweenSystem / EFloatCurve` | 0 个文件 | Godot `Tween / Curve` | 不复制 Unity 调度器；Godot 原生对象负责插值、并行/串行动画和 easing |
 | `ECommandSystem` | 0 个文件 | generated intent/event + core system | 不迁移未使用的第二套命令队列；跨边界命令继续由 schema、bridge 和 core 权威层负责 |
-| `ELuaSystem` | 13 个文件 | CardCiv `core/loader` 与 `core/rules` | 不放入 fw；MoonSharp VM、沙箱预算、Mod 路径和 effect command 解码属于宿主规则合同 |
+| `ELuaSystem` | 13 个文件 | `Fw.Rt.Script` + CardCiv `core/config` 与 `core/rules` | 通用 Lua 沙箱、预算和值边界进入 fw；Mod 路径、effect command 和玩法函数合同仍属于宿主 |
 | `ETalkRun` | 4 个文件 | 宿主 mode/flow | 不放入 fw；节点类型、条件、动作和关闭原因都是具体游戏的对话领域模型 |
 | `Fix32` | EasyGame 基础类型 | config pack 的 `Fixed32` 合同 | 不再增加第二套运行时数值类型；fw 只保持生成/打包格式，权威 core 按项目需求选择数值实现 |
 

@@ -4,8 +4,8 @@
 
 它提供四类能力：
 - Godot 运行时骨架：`AppRoot -> BaseMode -> SystemManager`
-- Godot UI / View 子框架：`FUI`、`FForm`、`FWidget`、`FViewRoot`、`FViewStore`、`FRefs`、`FProps`、`FBinding`、`FViewModel`
-- 通用运行时服务：资源、本地化、对象池、事件、状态机、日志、2D/3D 音频、显示和调试开关
+- Godot UI / View 子框架：`FUI`、`FForm`、`FWidget`、`FViewRoot`、`FViewStore`、`FRefs`、`FProps`、`FBinding`、`FViewModel`，以及程序姿态采样与人形两段 IK
+- 通用运行时服务：资源、本地化、对象池、事件、状态机、日志、2D/3D 音频、显示、调试开关，以及可替换 transport 的 `Fw.Rt.Net`
 - C# 工具链：`fw/tools/new.*`、`gen.*`、`build.*`、`test.*`
 
 框架维护文档在：
@@ -82,6 +82,7 @@ hook 只把 `fw/docs` 和 `fw/.codex/skills/fw` 同步到默认模板；产生�
 属于 `fw/`：
 - Godot 通用运行时
 - Godot UI / View 子框架
+- C# 通用网络 transport、可靠命令语义和故障模拟
 - 框架生成器、工具脚本、模板
 
 不属于 `fw/`：

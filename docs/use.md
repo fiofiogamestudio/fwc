@@ -43,6 +43,20 @@
 3. 使用小数定点时在 schema 声明一次空 `message Fixed32 {}`，字段类型写 `Fixed32`；不要给 marker 添加字段。
 4. 宿主需要 FWE 等结构化编辑器时，在 `[gen]` 增加 `fwe = "tools/fwe/_gen"`；编辑器只消费生成的 `_config_schema.json`，不要再维护表头或字段类型副本。
 
+## 程序化骨骼
+- 在宿主 schema/data 中维护一份整数 tick 程序动作轨道；C# Core 使用 `Fw.Rt.Animation.ProceduralActionSampler`，Godot 使用 `FProceduralPose.group_tracks/sample_track`。两端必须使用相同 easing、Y-X-Z 角约定、Quaternion slerp 与采样上限，不能各自重建曲线。
+- 固定 tick 是规则事实；Godot 可以在相邻 tick 间做只读的子 tick 插值。快速旋转或位移需要调用 `RequiredSubsamples / required_subsamples`，用相同角度、距离和最大样本数覆盖一个 Core tick。
+- 刚体道具轨道应位于宿主定义的统一角色坐标系中，再把模型自己的攻击轴映射到该坐标系；例如宿主可约定 `GripPivot`、`-Z` 前向和以道具为 anchor 的局部部件盒。具体武器、命中盒和阶段字段仍由宿主 schema 定义。
+- 需要从动画库选择自然移动时，宿主先离线或启动时采样 `velocity / trajectory / pose / pose_velocity / phase / contacts` 候选，再把数据库和当前查询交给 `FMotionMatcher.match_motion`。关节速度应由相邻姿态采样计算并使用独立低权重，避免覆盖方向意图。宿主负责 AnimationPlayer、phase seek、crossfade、缓存和查询节流；方向、步态或 clip 所有权改变时立即重查。匹配器只选表现候选，不能提供 Core 位移或 root motion。
+- 先定义稳定的 `pose_family`，再选择 `FProceduralRigAdapter` 实现。正式角色通常用 `FProceduralHumanoidRigAdapter` 驱动完整 skinned humanoid，其 profile 的 `bones` 把 `left_upper_arm` 等语义名映射到模型骨骼名；`FSegmentedHumanoidRigAdapter` 不需要 Skin、权重或 AnimationPlayer，适合碰撞/姿态调试、原型或明确采用刚性分段的美术风格。上层 view 不能分支读取具体骨骼名，只调用 adapter 的 setup、submit、solve、socket、fit、clear 和 metrics。
+- 每帧由上层 view 先生成模型无关的 locomotion 和上下身语义姿态，再采样并定位权威刚体道具，最后调用 adapter 提交 `left_hand_transform`、`right_hand_transform`、手肘/膝盖 pole 与 `hips/spine/chest` 的旋转附加姿态。内部脊柱骨的 `*_position` 不得用于手部可达补偿；应先用 `fit_hand_targets` 求出道具目标所需的刚体平移，取反后作为 `torso_reach_offset`，必要时基于实际倾斜后的残差做少量闭环迭代，但不得把修正施加回道具轨道。
+- `torso_reach_lean_degrees` 控制定长躯干倾斜上限，`left/right_shoulder_swing_degrees` 控制定长锁骨或肩部摆动；框架默认肩部上限为 35 度，profile 可在不超过 65 度硬上限内为具体 Rig 收紧或放宽。双骨 IK 随后把腕/足目标夹到真实骨长可达区间，并通过 `metrics.torso_reach / shoulder_offsets / endpoint_errors / reach_clamps` 报告倾斜、肩移和未达到距离；禁止靠平移胸骨、缩放骨骼、拉伸末端骨或伪造零误差隐藏不可达目标。
+- 双手装备只允许主手与道具轨道成为权威目标。副手先沿装备握柄轴在宿主限定距离内寻找可达握点，再用受限的髋-脊柱-胸倾斜和锁骨旋转共同收敛；不得为了贴合副手而旋转、缩放或平移权威武器。法杖等允许释放副手的动作应在语义轨道中显式省略副手目标，不能由 Rig 类型隐式猜测。
+- 需要上下身朝向分离时，调用 `FBodyOrientation.resolve`：角色根节点使用 `lower_yaw`，独立动作坐标系使用 `action_yaw`，把 `upper_twist_yaw` 按 Rig 比例分配给脊柱与胸部。下一帧应把上次 `upper_twist_yaw` 作为 `options.current_upper_twist_yaw` 传回，以获得默认约 `0.12s` 渐入和 `0.16s` 回正；`target_upper_twist_yaw` 可用于调试目标。移动中的 `upper` 和 `committed` 都保持根朝向随速度，`committed` 只按权重混入脚部站姿，`full_body` 才完整接管；动作坐标系必须继续跟随权威瞄准。
+- 宿主负责按身体策略决定是否提交脚目标：`upper` 不提交 `*_foot_transform`，让基础步态完整保留；`committed` 从当前动画脚姿态向动作脚姿态按权重混合；`full_body` 可提交完整脚目标。不要仅仅继续播放 locomotion 后又用 100% 脚 IK 覆盖它。
+- 需要有限捏脸或体型差异时，把 `FSkeletonAppearanceModifier` 作为 `Skeleton3D` 子节点，先用 `configure({bones, limits})` 绑定语义骨骼和安全缩放范围，再用 `submit_adjustments` 提交 `Vector3` 缩放并由 Modifier 帧阶段求解；编辑器即时预览可调用 `solve_now`。`clear_adjustments` 和重新 `configure` 都会恢复原始基准，`metrics` 会报告夹取、忽略项与耗时。换装、发型场景、材质和装备属性仍由宿主分别管理。
+- 动作起手若需从 locomotion 挂点过渡到统一动作坐标系，过渡必须在首个权威命中 tick 前结束；命中期间画面道具姿态必须等于共享采样结果。root motion、命中窗口、去重和伤害仍由宿主 Core 决议，modifier 只让身体追随。
+
 ## C# Node
 - GDScript 需要创建 C# bridge Node 时调用 `FCSharp.create_node("res://csharp/bridge/<name>_bridge.cs")`。
 - C# 文件名、类名必须大小写完全一致，类型必须继承 `Godot.Node`。
@@ -59,27 +73,65 @@
 - C# core 用 `LocalizedMessage`/`LocalizedAsset` 只传语义 ID、参数和 fallback；具体语言、字体、图片、音频与排版始终由表现层解析。
 
 ## AI 算法
-- 宿主在自己的 core system 中创建并调用 AI 对象；不要给 Utility、Behavior、Plan 或 Nav 再套 `init/tick/shutdown` 生命周期。
-- 每次权威计算创建 `DecisionScope(tick, budget, random, trace)`；budget 使用候选数或节点数，不使用毫秒数。
+- 宿主在自己的 core system 中创建并调用 AI 对象；不要给 Utility、Behavior、StateTree、Plan 或 Nav 再套 `init/tick/shutdown` 生命周期。
+- 可视 AI 分别维护条件、目标、行为树、状态机和 GOAP 资产；不要让策划直接编辑 `DecisionGraph` IR，也不要把这些语义重新混入一张通用蓝图。
+- 启动时先用 `DecisionAssets.Parse` 装载条件和行为树，再用 `Utility / State / Plan` 编译运行程序；只有需要检查或合并多个 IR 根时才使用 `Build*` 与 `DecisionGraph.Compose`。任何结构、引用或参数错误必须在进入战局前失败。
+- 每次权威计算把允许读取的事实写入 `Blackboard`，创建 `DecisionScope(tick, budget, random, trace)`；budget 使用候选数或节点数，不使用毫秒数。同一个 scope 只用于当前串行计算链，不并发或重入共享。
+- 为每个 AI 对象保存独立 `DecisionSession`，并实现 `ITaskHost`。task host 只暴露最小能力，先收集/校验结果，整次执行成功后再提交会话与玩法状态。
+- 正在执行宿主定义的原子动作时调用 `UtilityProgram.Tick(..., reselect: false)`；当前目标条件失效时框架仍会立即退出并重选，条件有效时才保持目标。动作结束或允许中断后恢复常规重选。学习模型若只是辅助 Utility，应把输出写成评分事实，不得另行提交目标。
+- 训练或仿真先用 `IsAvailable` 生成合法目标集合，再用 `TickGoal` 执行采样结果；线上 Bot 不调用 `TickGoal`，也不直接修改 `DecisionSession.ChoiceId`。
+- Utility 目标负责决定“为什么做”，行为树负责“怎样做”，状态机负责“何时切换状态”，GOAP 负责从目标与动作事实中规划步骤；条件资产供前三者复用。
 - 接入整局 AI 时先实现 `IGameEnvironment<TState,TObservation,TAction>`：`Clone` 必须隔离可变状态，`StateKey` 必须确定，合法动作必须唯一且顺序稳定，`Step` 只修改传入的搜索副本。
+- 双方同一时刻决策时实现 `IParallelGameEnvironment<TState,TObservation,TAction>`：按稳定顺序返回 active actor，为每个 actor 生成只含其可知信息的 observation 和非空合法动作集合，并在 `Step` 前调用 `ParallelEnvironmentGuard` 校验完整动作批次。
 - `Result` 对仍在进行的局返回 `Running`，真实结局返回 `Terminated`，动作/回合上限返回 `Truncated`；每一步 rewards 和最终 payoffs 都按 `Spec.PlayerCount` 返回。
 - 单人确定性关卡先用 `BeamSearch` 和宿主启发式函数建立可解释基线；每帧继续对同一实例调用 `Step(scope)`，成功后只提交结果中的第一个动作并重新从权威状态搜索。
 - 大分支、随机或多玩家顺序游戏使用 `PuctSearch`；当前实现要求完全信息，隐藏信息游戏应由宿主先按玩家信息集确定化。`IPolicyValueModel` 必须只根据传入 observation 与 legal actions 生成先验和逐玩家价值，缺失先验会被归一化为零，全部为零时退化为均匀先验。
 - 自博弈时把根节点访问分布、最终选中动作、即时 rewards 和最终 payoffs 写入 `PolicyValueSample`/`TrainingTrajectory`；用 `ReplayBuffer` 固定容量并用框架随机流确定性抽样。
 - 无 ML 运行时的首个训练闭环可实现 `IPolicyValueFeatureEncoder`，用 `LinearPolicyValueTrainer` 训练并通过 `LinearPolicyValueCheckpoint.ToJson/FromJson` 持久化；policy 特征必须同时编码观察、行动者和候选动作，value 特征必须明确观察者与被估值玩家，输入应在宿主侧归一化。宿主还应在 checkpoint 外层记录特征 schema id、数据集哈希和训练配置。
 - 线性模型只用于验证数据、训练、checkpoint、推理和搜索接线，不能替代复杂游戏所需的神经网络；升级模型时保持 observation/action、样本和评测合同不变，由宿主提供新的 `IPolicyValueModel`。
+- 固定离散动作的实时策略可使用 `DenseActorCriticModel` 与 `DensePpoTrainer`：先用可解释教师产生 `DenseImitationSample`，再冻结当前模型采集 `DensePpoSample` 并训练候选；候选不得直接覆盖线上模型，必须用固定 seed 同时对旧冠军、教师和关键场景矩阵评测。策略容易因单轮更新过大而退化时可设置 `DensePpoTrainingOptions.targetKl`，训练器会在完整 epoch 后按非负近似 KL 判断是否提前停止；默认 `0` 保持关闭，不能把提前停止本身当作质量提升。
+- 自博弈对手池使用 `ZeroSumLeague` 记录候选、当前冠军和历史冠军的双向收益；对手采样只使用框架确定性随机流。checkpoint 必须绑定 observation schema，维度或 schema 不匹配时宿主应拒绝加载并回退到可解释策略。
 - 批量评测用 `EvaluationAccumulator`；发布门槛同时检查成功率、Wilson 下界、截断率、平均步数和与旧策略同种子对照，不只看单局通关。
 - Utility 用 `UtilitySelector` 选择目标，FSM 用现有 `StateMachine` 稳定执行动作，Behavior Tree 用 `BehaviorSession` 保存 Running 节点。
-- GOAP 使用 `GoalPlanner.Begin` 创建独立 `PlanSearch`，A* 直接创建 `PathSearch`；返回 `Searching` 时保留对象并在后续 tick 继续调用 `Step`。
+- 直接使用低层 GOAP 时通过 `GoalPlanner.Begin` 创建 `PlanSearch`；执行可视 GOAP 资产时通过 `PlanGraph.Begin` 创建。A* 直接创建 `PathSearch`；返回 `Searching` 时保留对象并在后续 tick 继续调用 `Step`。
 - 流场图必须通过 `IFlowGraph.Incoming` 提供反向邻接；普通 A* 图通过 `IPathGraph.Neighbors` 提供正向邻接。
 - 远程模型通过 `RemotePolicy` 注入宿主自己的异步调用，并用 `FallbackPolicy` 接本地策略；密钥和网络客户端不得进入 `fw`。
 - 算法结果必须先由宿主验证，再转换为自己的 intent 或 command；框架算法不得直接修改玩法状态。
 
+## Optional Lua Script
+Lua 只在玩法确实需要文本脚本时启用，不是可视 AI 图的组成部分。
+1. 宿主把 JSON 图和 `.lua` 文件放在自己的数据目录，并由自己的编辑器维护。
+2. Core 启动时创建 `ScriptRuntime`，调用 `Load`，再用 `RequireFunction` 验证入口。
+3. 每次调用只把普通字典/数组快照传给脚本，不传 context、state、Node 或任意 CLR 对象。
+4. 用 `ScriptHost.RegisterQuery` 注册最小只读能力；确定性随机、寻路等能力也通过 query 注入。
+5. 脚本通过 `api.command` 描述意图；宿主拿到 `ScriptCallResult` 后先验证整批 command，再统一执行。
+6. 需要调整资源上限时传入 `ScriptRuntimeOptions`；指令、结构深度、集合项、字符串、源码和 command 上限必须保持为正数，不能用放大上限代替内容拆分。
+7. 关闭 Core 时调用 `ScriptRuntime.Dispose`；DS 和本地模式必须装载同一份脚本事实源。
+
+## 网络
+- server/client 分别创建 `INetTransport` 并调用 `StartServer / StartClient`；发现器调用 `StartUnconnected`，不需要建立会话。
+- authority 结束会话或回收房间时调用 `Disconnect(remoteEndPoint)` 主动释放连接；不要只删除宿主自己的 peer 状态，否则底层连接仍会占用容量。
+- `NetTransportOptions.MaxQueuedMessages` 设置 adapter 的接收队列上限；保持默认值或按实际 poll 预算调大，监控 `NetTransportSnapshot.QueueDrops`，不要用无限队列掩盖消费速度不足。
+- 宿主为每类 packet 固定 channel 和 `NetDelivery`。一次性命令用 `ReliableOrdered`，可覆盖状态用 `ReliableSequenced`，允许自然丢失的观测才用 `UnreliableSequenced`。
+- 客户端先把一次性操作写入 `NetCommandJournal`，每次只发送最早未确认项；authority 用命令 id 去重，返回终态确认后调用 `Complete` 或 `CompleteThrough`。
+- journal 满时停止接受新命令并把背压暴露给上层，不要删除最旧或最新输入。重连恢复同一权威 session 时保留 journal；权威 session 被替换时显式拒绝旧命令。
+- 高频状态可存入 `NetInputHistory<TState>` 并发送 latest 窗口；authority 只应用最新合法 tick，一次性边沿不得放进状态历史重复执行。
+- 测试协议时使用 `NetFaultSimulator<T>` 固定 seed，分别覆盖丢失、重复、乱序、延迟、断线恢复和队列背压；真实 adapter 另做 loopback 测试。
+- 读取 `NetTransportSnapshot` 时区分 payload bytes 与 wire bytes；带宽基准使用 wire bytes/datagrams，业务 packet 分布使用宿主 codec 的 payload 统计。
+
+## 帧归档
+1. 用 `FrameArchive.Create(path, content, options)` 创建 writer；`content` 保存整份文件共享且可独立校验的格式元数据。
+2. 每个权威 tick 调用 `Append(tick, isCheckpoint, payload)`；第一帧应是 checkpoint，之后按固定间隔再写 checkpoint，其他帧只保存增量。
+3. 正常结束调用 `Complete()` 得到最终路径；异常退出保留 `.part`，下次启动先调用 `FrameArchive.Recover(partialPath, options)` 再决定继续读取或归档。
+4. 播放时用 `Open`，`FindFrameIndex` 定位目标帧，`FindCheckpointIndex` 找起点，从 checkpoint 到目标依次 `ReadAt`；跳转追帧期间是否派发事件由宿主决定。
+5. 不要把可执行宿主对象、引擎资源或未版本化二进制布局直接放入 payload；content 应声明宿主格式版本和最低 reader 版本。
+
 ## 房间目录
-- 服务端使用 `RoomDirectoryStore` 提供 register、heartbeat、unregister、list 和 join HTTP 端点；具体 Web host、数据库和部署方式由游戏工程决定。
-- DS 使用 `RoomDirectoryClient.RegisterAsync` 注册并保管返回的 heartbeat token 与 admission secret，随后按不大于 `HeartbeatIntervalMilliseconds` 的间隔调用 `HeartbeatAsync`；不要在客户端重复猜测目录的 stale 配置。
-- 客户端只调用 `ListAsync(gameId, protocolVersion)` 和 `JoinAsync(roomId)`；admission secret 永远不返回客户端。
-- authority 使用 `RoomTicket.TryValidate` 校验短期票据后才创建玩家，并按 ticket nonce 与连接身份实现一次性或绑定式消费。
+- 服务端使用 `RoomDirectoryStore` 提供 register、heartbeat、unregister、list、allocate 和 join HTTP 端点；具体 Web host、数据库和部署方式由游戏工程决定。
+- DS 使用 `RoomDirectoryClient.RegisterAsync` 注册并保管返回的 heartbeat token 与 admission secret，随后按不大于 `HeartbeatIntervalMilliseconds` 的间隔调用 `HeartbeatAsync`。房间地图、容量或标签可在心跳中更新；不要在客户端重复猜测目录的 stale 配置。
+- 客户端浏览和普通加入使用 `ListAsync / JoinAsync`；创建新房构造 `RoomAllocationRequest`，把经过宿主预校验的创建参数编码为不超过 1024 个 UTF-8 字节的 `CreatePayload`，需要指定现有 DS 时同时填写 `PreferredHost / PreferredPort`，再调用 `AllocateAsync(request)` 原子预留匹配的无人房间。两项留空和 `0` 表示由目录任选；找不到匹配 endpoint 时分配失败，不得降级为客户端直连。admission secret 永远不返回客户端。
+- authority 使用 `RoomTicket.TryValidate` 校验短期票据并取得已签名的 `CreatePayload`，由宿主规则在创建玩家前完成最终校验和房间初始化，再按 ticket nonce 与连接身份实现一次性或绑定式消费。
+- 宿主开始战局后以 `RoomStatus.Playing` 心跳；观战列表调用 `ListSpectatableAsync`，申请观战票据调用 `SpectateAsync`。authority 必须再检查 ticket purpose，spectate 连接不得复用玩家分配与输入路径。
 - 本机开发可以使用 `http://127.0.0.1`；公网必须在反向代理或 Web host 上配置 HTTPS，否则 `RoomDirectoryClient` 会拒绝连接。
 
 ## 表现对象

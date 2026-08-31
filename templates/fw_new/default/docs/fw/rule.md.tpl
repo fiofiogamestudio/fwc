@@ -7,7 +7,7 @@
 ## 规则
 
 ### 权威
-- C# core 是玩法规则权威。
+- C# core 是玩法权威执行层；权威规则可以来自经过校验的 typed config、数据图和可选沙箱脚本。
 - Godot / GDScript 是表现层。
 - 表现层只能消费 core 的 view、event 和配置。
 - 表现层不得保存或推导核心规则真值。
@@ -55,7 +55,7 @@
 - 共享的是运行范式，不是所有文件后缀。
 
 ### C# Core
-- C# core 只负责玩法规则和权威状态。
+- C# core 只负责权威状态、确定性机制和规则执行边界。
 - C# 分为 `bridge / core` 两层。
 - `bridge` 是边界层，只负责 Godot 调用、网络、packet、codec 和数据进出。
 - `core` 是玩法权威层，只负责 `GameCore` facade、`CoreContext`、有 phase 的 core system、state、rules、config 和 const。
@@ -71,6 +71,7 @@
 - `codec` 只负责数据格式和 C# 类型转换；bridge codec 特指 Godot Dictionary 与 C# 类型转换。
 - `const` 只保存少量编译期常量，不保存玩法调参。
 - `query`、`solver` 不作为架构后缀；需要复用的计算归入 `rules`。
+- 使用可编辑逻辑时，C# 只投影只读事实、提供通用能力并校验结果，不在适配层重复实现同一决策。
 
 ### Bridge
 - bridge 是 Godot 和 C# core 的唯一运行时边界。
@@ -87,7 +88,17 @@
 - intent action、event 和 packet 的 variant root 各自只能有一个 oneof group。
 - 联机 wire codec 必须能被 Godot 客户端和纯 C# DS 同时读取；不得依赖 Godot 引擎私有二进制格式作为网络协议。
 - wire frame 必须校验 magic、版本、flags、编码/解码长度和 checksum，并在解压过程中执行硬上限。
-- 联机 packet 必须校验协议版本；加入战局后的 UDP packet 必须校验会话身份。
+- 联机 packet 必须校验协议版本；加入战局后的 connected packet 必须校验会话身份。
+
+### Network
+- `Fw.Rt.Net` 只提供跨游戏的 transport、投递语义、命令 journal、命令去重、输入历史和故障模拟，不定义宿主 packet、玩家 intent 或房间规则。
+- 宿主 bridge 负责把 packet 类型映射到 channel 与投递语义；玩法 core 不直接依赖 transport 实现。
+- transport 必须通过 `INetTransport` 隔离，宿主不得泄漏 LiteNetLib、Steam 或平台 SDK 类型。
+- 一次性命令必须进入有界 journal，直到收到权威终态确认才移除；容量耗尽必须显式背压，禁止静默丢弃。
+- 可覆盖状态使用 latest 语义，并由宿主决定短时保持或输入历史窗口；不得把旧状态当一次性命令反复执行。
+- authority 必须对命令 id 去重并保留有界终态记录；重传、重复和重连不得导致命令重复执行。
+- transport 接收队列必须有界；不可靠消息溢出可丢弃但必须计数，可靠消息溢出必须中断连接并依靠未确认 journal 重连重放，禁止伪装成正常接收。
+- 未连接消息只用于发现、探测等无会话用途；建立会话后的 packet 必须使用 connected transport 并继续执行宿主协议与身份校验。
 
 ### Config
 - 配置 schema 事实源是 `schema/config/*.proto`。
@@ -103,6 +114,29 @@
 - config pack 必须包含 magic、版本、schema hash、payload length 和 payload checksum，并使用原子替换写入。
 - config pack 的 C# 编解码合同只允许由纯 C# `FwRuntime.ConfigPack` 实现；生成器和生成 codec 不得各自复制格式解析。
 - 调整数据行只需 check/pack；只有 schema 或 CSV/JSON 文件布局变化才需要重新生成 config 代码。
+
+### AI
+- `Fw.Rt.AI` 只提供跨游戏的黑板、决策图、Utility、Behavior Tree、StateTree、GOAP、导航、预算和确定性执行机制，不保存宿主玩法。
+- `DecisionGraph` 是运行时只读 IR，不是策划编辑格式；可视资产应按条件、目标、行为树、状态机和 GOAP 的本来语义编写，再由 `DecisionAssets` 在启动阶段编译。
+- 行为树必须是单根、单父级的严格树；状态机以状态为节点、转换为边；Utility 编辑目标及评分，GOAP 编辑目标和动作，不得重新混成一张通用蓝图。
+- 每个权威对象必须独立保存 `DecisionSession`、随机状态和需要续算的搜索状态。
+- 图只能通过 `ITaskHost` 请求宿主能力；框架不读取宿主 context，不直接修改世界，也不生成游戏专用 intent 或 command。
+- 宿主负责定义可用 task、黑板键和语义资产合同，并在启动阶段校验全部树、条件、目标、状态、规划和配置引用。
+- 同一决策层只能有一个最终选择器；模型、搜索或脚本若不完全替代该选择器，只能提供事实、评分或候选，不得并行提交另一份目标。
+- Utility 目标条件是硬约束；条件不满足的目标不得参与评分，也不得因切换阈值或既有会话继续执行。
+- 生产运行使用 Utility 自己的最终选择；训练、仿真和确定性测试需要执行指定合法目标时，必须通过 Utility 的显式目标入口，不得直接改会话内部选择状态。
+- 决策预算按确定性工作量计数；预算耗尽必须挂起或安全失败，不得用真实耗时截断，也不得提交部分结果。
+
+### Optional Script
+- `Fw.Rt.Script` 是可选的跨游戏 Lua 沙箱和 JSON-like 值边界，不是 AI 或决策图的必需依赖，也不保存宿主玩法。
+- 脚本事实源、函数合同、图节点语义和 FWE 编辑器定义属于宿主工程。
+- 脚本不得自动访问 CLR、文件、网络、系统时间或进程环境；只能调用宿主显式注册的只读 query。
+- 脚本 command 先收集，函数成功返回后才交给宿主校验和执行；异常或预算超限时整批 command 作废。
+- 脚本输入、输出和 command 参数只允许空值、布尔、数字、字符串、数组和字符串键对象。
+- 权威脚本不得使用 Lua 自带随机数；随机性必须由宿主注入确定性 query。
+- 脚本模块全局只能缓存启动时已校验的只读配置；可变权威状态必须经由每次调用的输入和返回值传递。
+- 模块加载和单次调用必须有指令预算、深度限制和集合数量限制。
+- 宿主必须在启动阶段加载模块、验证入口函数和图结构，不能把内容错误推迟到战局中。
 
 ### 表现
 - UI 使用 `form + logic + widget`。
@@ -131,6 +165,9 @@
 - 标准 feature view 使用 `setup(root) / render(root, vm, dt) / clear(root)`，不管理对象生命周期。
 - `FViewStore` 是框架内部 refs/props/binding/VM 存储器，不是业务 `view`，不得作为 feature view 基类。
 - 自包含 visual component 可以使用更窄的 `update_*` API，但只能被上层 object/view 持有，不得读写 system context。
+- 程序化 Rig 通过 `FProceduralRigAdapter` 消费语义目标并写入 `Skeleton3D`；上层只能依赖 `pose_family`、语义骨骼、socket、fit 和 metrics，不能依赖具体模型骨骼名、Skin 或 AnimationPlayer。Adapter 不得读取输入、产生权威 root motion、修改 core 状态或反向移动道具。刚性分段与完整 skinned humanoid 后端必须遵守同一合同；每次清空或重新配置时必须恢复自己写入且仍未被外部动画改写的通道，不能让上一帧解算结果成为下一帧语义目标。宿主若让程序动作参与权威判定，Core 与表现必须通过框架纯采样器消费同一份固定 tick 轨道，不能把骨骼结果或另一套表现关键帧当作命中事实源。
+- `FMotionMatcher` 只输出表现候选，不得拥有输入、角色状态、动画播放器、场景节点或位移权限。宿主可以缓存由真实动画采样出的数据库并限制查询频率，但方向、步态或当前 clip 所有权改变时必须立即查询；未查询帧只能继续播放已选候选，不能伪造新匹配。匹配结果不得作为 Core 速度、碰撞、体力或命中的事实源。
+- 上下身分层只能改变表现所有权：移动中下身根与基础步态归速度所有，上身扭转应沿连续躯干链分配并平滑进出；普通上身动作不得提交脚 IK 后反向覆盖步态。手部可达补偿只能使用保持髋-脊柱-胸、胸-肩与手臂段长的受限关节解算，不得平移内部躯干骨、缩放骨骼或移动权威道具来掩盖残差。武器或施法动作坐标系必须始终使用权威动作朝向，不得用腿部平滑、躯干限制或 IK 结果反推 Core 朝向和命中。
 - logic 只编排表现对象，不直接绕过对象协议操作 view。
 - `logic` 是表现层逻辑词，不用于 C# core 规则层。
 - `view / vm / vm_builder / actor / fx / form / widget` 是表现层角色词，不用于 C# core。
