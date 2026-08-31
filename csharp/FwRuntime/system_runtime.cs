@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 
 namespace Fw.Rt.Systems;
 
@@ -35,6 +36,20 @@ public sealed record SystemSnapshot(
     IReadOnlyList<string> Dependents
 );
 
+public sealed record SystemTimingSnapshot(
+    string Scope,
+    string Id,
+    string Phase,
+    int SampleCount,
+    double LastMilliseconds,
+    double AverageMilliseconds,
+    double P95Milliseconds,
+    double MaxMilliseconds,
+    long LastAllocatedBytes,
+    double AverageAllocatedBytes,
+    long MaxAllocatedBytes
+);
+
 public sealed class SystemRuntime
 {
     private readonly SystemRuntime? _parent;
@@ -42,6 +57,7 @@ public sealed class SystemRuntime
     private readonly Dictionary<string, Entry> _entriesById = new(StringComparer.Ordinal);
     private readonly List<Entry> _initializedEntries = [];
     private readonly List<string> _phaseOrder = [];
+    private readonly List<Entry> _tickEntries = [];
     private List<Entry>? _orderedEntries;
 
     public SystemRuntime()
@@ -217,6 +233,23 @@ public sealed class SystemRuntime
         return result.AsReadOnly();
     }
 
+    public IReadOnlyList<SystemTimingSnapshot> GetTimingSnapshots(bool includeParent = true)
+    {
+        var result = new List<SystemTimingSnapshot>();
+        if (includeParent && _parent != null)
+        {
+            foreach (var snapshot in _parent.GetTimingSnapshots(true))
+            {
+                result.Add(snapshot with { Scope = $"parent/{snapshot.Scope}" });
+            }
+        }
+        foreach (var entry in OrderedEntries())
+        {
+            result.Add(entry.TimingSnapshot("local"));
+        }
+        return result.AsReadOnly();
+    }
+
     public void InitAll()
     {
         if (State != SystemRuntimeState.Created)
@@ -256,11 +289,25 @@ public sealed class SystemRuntime
 
         try
         {
-            foreach (var entry in OrderedEntries().ToArray())
+            _tickEntries.Clear();
+            _tickEntries.AddRange(OrderedEntries());
+            foreach (var entry in _tickEntries)
             {
                 if (_entriesById.ContainsKey(entry.Id) && entry.Initialized)
                 {
-                    entry.Tick(dt);
+                    long started = Stopwatch.GetTimestamp();
+                    long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+                    try
+                    {
+                        entry.Tick(dt);
+                    }
+                    finally
+                    {
+                        entry.RecordTick(
+                            (Stopwatch.GetTimestamp() - started) * 1000.0 / Stopwatch.Frequency,
+                            Math.Max(GC.GetAllocatedBytesForCurrentThread() - allocatedBefore, 0L)
+                        );
+                    }
                 }
             }
         }
@@ -355,6 +402,7 @@ public sealed class SystemRuntime
         _entriesById.Clear();
         _initializedEntries.Clear();
         _phaseOrder.Clear();
+        _tickEntries.Clear();
         _orderedEntries = null;
     }
 
@@ -527,6 +575,12 @@ public sealed class SystemRuntime
         List<string> dependencies
     )
     {
+        private const int TimingCapacity = 160;
+        private readonly double[] _tickMilliseconds = new double[TimingCapacity];
+        private readonly long[] _allocatedBytes = new long[TimingCapacity];
+        private int _timingCount;
+        private int _timingIndex;
+
         public string Id { get; } = id;
         public string Phase { get; } = phase;
         public object Context { get; } = context;
@@ -535,5 +589,65 @@ public sealed class SystemRuntime
         public Action Shutdown { get; } = shutdown;
         public List<string> Dependencies { get; } = dependencies;
         public bool Initialized { get; set; }
+
+        public void RecordTick(double milliseconds, long allocatedBytes)
+        {
+            _tickMilliseconds[_timingIndex] = Math.Max(milliseconds, 0.0);
+            _allocatedBytes[_timingIndex] = Math.Max(allocatedBytes, 0L);
+            _timingIndex = (_timingIndex + 1) % TimingCapacity;
+            _timingCount = Math.Min(_timingCount + 1, TimingCapacity);
+        }
+
+        public SystemTimingSnapshot TimingSnapshot(string scope)
+        {
+            if (_timingCount == 0)
+            {
+                return new SystemTimingSnapshot(
+                    scope,
+                    Id,
+                    Phase,
+                    0,
+                    -1.0,
+                    -1.0,
+                    -1.0,
+                    -1.0,
+                    0L,
+                    0.0,
+                    0L
+                );
+            }
+
+            var ordered = new double[_timingCount];
+            double totalMilliseconds = 0.0;
+            long totalAllocatedBytes = 0L;
+            double maxMilliseconds = 0.0;
+            long maxAllocatedBytes = 0L;
+            for (int index = 0; index < _timingCount; index += 1)
+            {
+                double milliseconds = _tickMilliseconds[index];
+                long allocatedBytes = _allocatedBytes[index];
+                ordered[index] = milliseconds;
+                totalMilliseconds += milliseconds;
+                totalAllocatedBytes += allocatedBytes;
+                maxMilliseconds = Math.Max(maxMilliseconds, milliseconds);
+                maxAllocatedBytes = Math.Max(maxAllocatedBytes, allocatedBytes);
+            }
+            Array.Sort(ordered);
+            int lastIndex = (_timingIndex - 1 + TimingCapacity) % TimingCapacity;
+            int p95Index = Math.Clamp((int)Math.Ceiling(_timingCount * 0.95) - 1, 0, _timingCount - 1);
+            return new SystemTimingSnapshot(
+                scope,
+                Id,
+                Phase,
+                _timingCount,
+                _tickMilliseconds[lastIndex],
+                totalMilliseconds / _timingCount,
+                ordered[p95Index],
+                maxMilliseconds,
+                _allocatedBytes[lastIndex],
+                totalAllocatedBytes / (double)_timingCount,
+                maxAllocatedBytes
+            );
+        }
     }
 }
