@@ -57,6 +57,37 @@ public static class WireFrame
     {
         options ??= new WireFrameOptions();
         ValidateOptions(options);
+        WireFrameHeader header = Inspect(frame, options);
+        if (header.TotalLength != frame.Length)
+        {
+            throw new InvalidDataException($"Wire encoded length is invalid: {header.PayloadLength}.");
+        }
+
+        ReadOnlySpan<byte> payload = frame.Slice(HeaderSize, header.PayloadLength);
+        byte[] decoded = header.IsCompressed
+            ? Decompress(payload, header.DecodedLength, options.MaxDecodedBytes)
+            : payload.ToArray();
+        if (decoded.Length != header.DecodedLength)
+        {
+            throw new InvalidDataException(
+                $"Wire decoded length mismatch: expected {header.DecodedLength}, got {decoded.Length}."
+            );
+        }
+        if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(decoded), frame.Slice(16, 32)))
+        {
+            throw new InvalidDataException("Wire frame checksum mismatch.");
+        }
+        return decoded;
+    }
+
+    public static bool HasHeader(ReadOnlySpan<byte> value)
+    {
+        return value.Length >= Magic.Length && value[..Magic.Length].SequenceEqual(Magic);
+    }
+
+    internal static WireFrameHeader Inspect(ReadOnlySpan<byte> frame, WireFrameOptions options)
+    {
+        ValidateOptions(options);
         if (frame.Length < HeaderSize || !frame[..Magic.Length].SequenceEqual(Magic))
         {
             throw new InvalidDataException("Wire frame magic is invalid.");
@@ -78,29 +109,16 @@ public static class WireFrame
         {
             throw new InvalidDataException($"Wire decoded length is invalid: {decodedLength}.");
         }
-        if (payloadLength < 0 || payloadLength > options.MaxEncodedBytes || payloadLength != frame.Length - HeaderSize)
+        if (payloadLength < 0 || payloadLength > options.MaxEncodedBytes)
         {
             throw new InvalidDataException($"Wire encoded length is invalid: {payloadLength}.");
         }
-
-        ReadOnlySpan<byte> payload = frame.Slice(HeaderSize, payloadLength);
-        byte[] decoded = (flags & CompressedFlag) != 0
-            ? Decompress(payload, decodedLength, options.MaxDecodedBytes)
-            : payload.ToArray();
-        if (decoded.Length != decodedLength)
-        {
-            throw new InvalidDataException($"Wire decoded length mismatch: expected {decodedLength}, got {decoded.Length}.");
-        }
-        if (!CryptographicOperations.FixedTimeEquals(SHA256.HashData(decoded), frame.Slice(16, 32)))
-        {
-            throw new InvalidDataException("Wire frame checksum mismatch.");
-        }
-        return decoded;
-    }
-
-    public static bool HasHeader(ReadOnlySpan<byte> value)
-    {
-        return value.Length >= Magic.Length && value[..Magic.Length].SequenceEqual(Magic);
+        return new WireFrameHeader(
+            decodedLength,
+            payloadLength,
+            HeaderSize + payloadLength,
+            (flags & CompressedFlag) != 0
+        );
     }
 
     private static byte[] Compress(ReadOnlySpan<byte> value)
@@ -148,3 +166,10 @@ public static class WireFrame
         }
     }
 }
+
+internal readonly record struct WireFrameHeader(
+    int DecodedLength,
+    int PayloadLength,
+    int TotalLength,
+    bool IsCompressed
+);

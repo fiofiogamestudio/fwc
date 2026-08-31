@@ -50,6 +50,18 @@ public sealed class RoomDirectoryClient : IDisposable
         return await SendAsync<RoomInfo[]>(request, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<RoomInfo>> ListSpectatableAsync(
+        string gameId,
+        int protocolVersion,
+        CancellationToken cancellationToken = default
+    )
+    {
+        string path = "rooms/spectatable?game_id=" + Uri.EscapeDataString(gameId)
+            + "&protocol_version=" + protocolVersion.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        using var request = new HttpRequestMessage(HttpMethod.Get, Resolve(path));
+        return await SendAsync<RoomInfo[]>(request, cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<RoomRegistrationResult> RegisterAsync(
         RoomRegistration registration,
         string registrationSecret,
@@ -97,6 +109,44 @@ public sealed class RoomDirectoryClient : IDisposable
             HttpMethod.Post,
             Resolve("rooms/" + Uri.EscapeDataString(roomId) + "/join")
         );
+        return await SendAsync<RoomJoin>(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<RoomJoin> SpectateAsync(
+        string roomId,
+        CancellationToken cancellationToken = default
+    )
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            Resolve("rooms/" + Uri.EscapeDataString(roomId) + "/spectate")
+        );
+        return await SendAsync<RoomJoin>(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<RoomJoin> AllocateAsync(
+        string gameId,
+        int protocolVersion,
+        CancellationToken cancellationToken = default
+    )
+    {
+        return await AllocateAsync(
+            new RoomAllocationRequest
+            {
+                GameId = gameId,
+                ProtocolVersion = protocolVersion,
+            },
+            cancellationToken
+        ).ConfigureAwait(false);
+    }
+
+    public async Task<RoomJoin> AllocateAsync(
+        RoomAllocationRequest allocation,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(allocation);
+        using var request = JsonRequest(HttpMethod.Post, "rooms/allocate", allocation);
         return await SendAsync<RoomJoin>(request, cancellationToken).ConfigureAwait(false);
     }
 
