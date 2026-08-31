@@ -48,7 +48,7 @@ dotnet build .\CardCiv.csproj -nologo
 godot --headless --path . --quit-after 3
 ```
 
-`FwRuntime.Verify` 覆盖 system scope/dependency/rollback/removal、event payload、FSM 比较器/失败恢复、32/64 位 random 和并发 log。Godot probe 覆盖 system refs/order、asset sync/threaded/coalescing/provider/handle、pool、audio、display、debug 和严格 GDScript 日志检查；Windows/Linux 主测试脚本都会执行两者。
+`Fw.Verify` 覆盖 system scope/dependency/rollback/removal、event payload、FSM 比较器/失败恢复、32/64 位 random 和并发 log。Godot probe 覆盖 system refs/order、asset sync/threaded/coalescing/provider/handle、pool、audio、display、debug 和严格 GDScript 日志检查；Windows/Linux 主测试脚本都会执行两者。
 
 ## 非目标
 

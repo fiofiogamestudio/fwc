@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- 运行时拆为必带 `core` 与 `app / anim / net / rec / ai / lua` Kit，训练和网络故障模拟移入 tool；新增 `[use].game/host`、`fw sync`、目标级 C# 引用与 Godot 投影，同时用完整类型转发保留 `FwRuntime` 和旧 Godot 路径的一版兼容入口，并清理清单记录的旧投影根。
+- 运行时拆为必带 `core` 与 `app / anim / net / rec / ai / lua` Kit，训练和网络故障模拟移入 tool；新增必填的 `[use].game/host`、`fw sync`、目标级 C# 引用与 Godot 投影，不再提供 `FwRuntime` 聚合程序集、类型转发或旧 Godot 路径回退。
 - 新增 `FLocalization`、标准目录 provider 与 C# `LocalizedMessage/LocalizedAsset` 语义契约，支持确定性 provider 覆盖、语言回退、命名参数、复数/选择、伪本地化、文本/资源绑定和缺失诊断。
 - 新增通用整局 AI 基础设施：游戏环境/机会节点合同、策略价值模型、固定预算 Beam 与 PUCT、训练轨迹、确定性 replay buffer、可持久化线性 policy/value 训练基线和带 Wilson 区间的批量评测。
 - 新增可独立组合的纯 C# AI 模块：固定工作量预算与追踪、Utility、Behavior Tree、增量 GOAP、增量 A*、LRU 路径缓存、流场、Steering，以及本地/远程/回退 Policy 合同。
@@ -10,7 +10,7 @@
 - 加固 `FAsset` 同路径异步请求合并、provider 注销/释放所有权与失效 Object 检查；加固 `FUI` 空 id、外部释放和 queued-for-deletion 栈恢复。
 - C# EventBus 增加单 key payload 契约和派发前预检；StateMachine 统一自定义比较器并在生命周期回调失败后复位；LogBuffer 增加线程安全、即时容量裁剪、结构化字典快照和转发环拒绝。
 - `DeterministicRandomStream` 增加无模偏 `NextInt64` 与 step 耗尽保护，`RandomPicker` 不再用浮点数采样大权重。
-- Windows/Linux 完整测试链现在固定执行 `FwRuntime.Verify` 和 Godot 通用服务探针，并继续把非白名单 Godot 日志错误视为失败。
+- Windows/Linux 完整测试链现在固定执行 `Fw.Verify` 和 Godot 通用服务探针，并继续把非白名单 Godot 日志错误视为失败。
 - Godot 编辑器探针改用完成资源导入后退出的 `--import`，避免 4.6 在首帧 `--quit` 时读取尚未初始化的编辑器设置。
 
 ## 0.1.4 - 2026-07-19
@@ -41,7 +41,7 @@
 - Bridge parser 增加 import/package/oneof 校验，拒绝 import 穿越与歧义；生成器统一 proto3 零值并只解析一次 schema。
 - Bridge/Config 生成器按编排、schema、Godot 渲染、C# types/codec 与 config pack 拆分内部实现，生成命令和产物保持兼容。
 - 新增纯 C# `WireFrame`，统一版本、长度、压缩上限和 checksum，并加固长度溢出边界。
-- Config pack 增加 schema hash、payload checksum、缓存与原子写入；格式编解码收束到纯 C# `FwRuntime.ConfigPack`，并明确 `Fixed32` Q24.8 约定。
+- Config pack 增加 schema hash、payload checksum、缓存与原子写入；格式编解码收束到纯 C# `Fw.Rt.Config.ConfigPack`，并明确 `Fixed32` Q24.8 约定。
 - 默认模板改为可运行的 Godot/C# 双向最小闭环，并固定 .NET/Godot 工具链。
 - CI 在 Windows/Linux 运行 FwGen、模板、Godot runtime 和主场景测试。
 - 补齐 WireFrame、ConfigPack、SystemRuntime 与 proto 数字溢出的边界测试；空白配置 key 和超范围 proto 数字现在会明确失败。

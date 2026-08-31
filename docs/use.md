@@ -16,7 +16,7 @@
 - 修改 `[use]` 或更新 fw commit 后先运行 `fw/tools/sync.ps1`；Unix 使用 `bash fw/tools/sync.sh`。
 - game C# 工程导入 `csharp/_gen/_fw_game.props`；声明 `[dotnet].host` 的纯 C# 工程导入 `_fw_host.props`。
 - `scripts/_fw`、两个 `_fw_*.props` 和框架脚本根的 `.gdignore` 都由 `sync` 管理，不手改。禁用 Kit 后再次同步会清理旧投影和引用。
-- 没有 `[use]` 的旧工程继续使用带类型转发的 `FwRuntime` 与 `res://fw/scripts/fw`；迁移时一次性改为 props 与 `res://scripts/_fw/fw`，不要混用两套 Godot 路径。
+- `[use].game` 与 `[use].host` 均为必填；C# 必须导入对应 props，Godot 只使用 `res://scripts/_fw/fw`，框架不提供旧程序集或旧路径回退。
 
 ## 日常命令
 - 同步 Kit：`fw/tools/sync.ps1`。

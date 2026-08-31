@@ -4,7 +4,7 @@
 - `fw/`：可复用框架仓库，只保存运行时、生成器、模板、工具和通用文档。
 - `fw/core/cs`：必带的 `Fw.Core`；`fw/kit/<id>`：`app / anim / net / rec / ai / lua`；`fw/tool`：gen、train、e2e、FWE 和模板等开发能力。
 - `fw.toml`：宿主工程路径与 .NET 工程入口，只接受固定 section/key，所有路径必须位于工程根目录内。
-- `[use].game / host`：按目标选择 Kit，`core` 自动加入；未声明 `[use]` 时只用于旧聚合模式兼容。
+- `[use].game / host`：必填，按目标选择 Kit，`core` 自动加入；缺失时配置加载直接失败。
 - `schema/systems.toml`：Godot system 与 C# core system 的统一事实源。
 - `schema/bridge/*.proto`：intent、view、event、packet 和公共值类型事实源。
 - `schema/config/*.proto`：配置结构事实源。
@@ -21,11 +21,11 @@
 ## Compatibility
 - Godot：`4.6.2 .NET`，由模板、`global.json` 与 CI 共同固定。
 - 构建 SDK：`.NET SDK 10.0.201`；只负责还原和编译，不改变游戏程序集的 API 基线。
-- Target framework：`net8.0`；游戏、DS、Kit 与 `FwRuntime` 保持一致，命令行工具在缺少 8 运行时时允许 `Major` 向前运行。
+- Target framework：`net8.0`；游戏、DS、Core 与 Kit 保持一致，命令行工具在缺少 8 运行时时允许 `Major` 向前运行。
 - 自动验证平台：Windows 与 Linux；macOS 在成为发布目标前再加入 CI。
 - Git tag 提供人类可读的 SemVer 版本，宿主 submodule commit 提供实际的精确版本锁定；二者职责不同。
-- 公共兼容边界覆盖 Godot runtime、Kit、`FwRuntime` 兼容聚合器、配置入口、生成命令、schema 子集和生成合同。内部生成器类型与实现文件不属于宿主 API。
-- 新工程引用 `csharp/_gen/_fw_game.props`；可选 DS/host 工程引用 `_fw_host.props`。旧 `FwRuntime` 用完整类型转发保持既有程序集限定类型可解析，并与旧 Godot 路径共同保留一个迁移版本。
+- 公共边界覆盖 Godot runtime、Core/Kit、配置入口、生成命令、schema 子集和生成合同。内部生成器类型与实现文件不属于宿主 API。
+- 游戏工程引用 `csharp/_gen/_fw_game.props`；DS/host 工程引用 `_fw_host.props`。框架不生成全模块聚合引用，也不保留旧程序集限定类型或旧 Godot 路径。
 - `_fwgen_manifest.json` 负责发现生成器、输入或产物漂移，但不代替版本号；宿主升级必须同时审阅 submodule 指针与生成差异。
 
 ## Runtime
@@ -185,7 +185,7 @@
 
 ## 生成
 - `fwgen sync` 读取 `[use]`，为 game/host 生成只含 `core + 所选 Kit` 的 props；game 端同时把启用的 app/anim GDScript 投影到 `scripts/_fw`，重写内部 `res://` 路径，并按上一版清单删除已禁用 Kit 或旧投影根中的受控输出。
-- 启用 `[use]` 时，`sync` 在被 Git 忽略的框架脚本根写入 `.gdignore`，让 Godot 只扫描投影；旧工程没有 `[use]` 时不启用该隔离。
+- `sync` 在被 Git 忽略的框架脚本根写入 `.gdignore`，让 Godot 只扫描 `[use].game` 选择的投影。
 - `SystemGen`、`BridgeGen`、`ConfigGen` 只编排流程；schema 层先解析并校验完整语义模型，Godot/C# renderer 只消费同一模型，不再各自推断 root、enum 或字段集合。
 - `BridgeModel` 固定一次解析得到 intent/action/event/packet root、enum、view 和字段集合；`ConfigModel` 固定一次解析得到 message、root、字段集合与 schema hash。校验器和 renderer 因此不会使用两套命名或分类规则。
 - 所有输出使用确定性排序；重复生成内容保持一致。
@@ -199,11 +199,11 @@
 
 ## 测试
 - `FwGenTests` 按 `proto / system / bridge / config / runtime / api` 分组，覆盖合法/非法 proto、import/package/oneof、proto 零值、生成标识符冲突、system phase/回滚/fault 清理、生成锁、批次新增/替换/删除回滚、生成清单、config pack 和 wire frame，包括 import 穿越/歧义、数字溢出、格式头、版本、校验和、长度边界与逐字节变异。
-- `tools/test.ps1`、`tools/test.sh` 会构建 runtime/generator，运行 `FwGenTests` 与 `FwRuntime.Verify`，并在全新临时目录验证 `new -> sync -> check -> config_pack -> build`。
+- `tools/test.ps1`、`tools/test.sh` 会构建模块与生成器，运行 `FwGenTests` 与 `Fw.Verify`，并在全新临时目录验证 `new -> sync -> check -> config_pack -> build`。
 - 测试会比较规范源与模板镜像，并验证重复生成、重复打包的内容完全一致。
 - 本地存在 Godot .NET 时继续执行 headless editor 扫描、编辑器改写后的二次 check/build、runtime 故障注入、通用服务探针和主场景启动；可用 `GODOT_BIN` 显式指定可执行文件。
 - `.github/workflows/ci.yml` 使用只读仓库权限，在 Windows 与 Linux 安装固定 Godot .NET，并执行同一完整测试链；同一引用的新任务会取消旧任务，单个 job 最长运行 30 分钟。
-- `fw/Directory.Build.props` 统一 core、Kit、tool、FwRuntime 与测试工程的 target framework，并把 C# 警告视为错误；`fw/csharp/Directory.Build.props` 只负责向旧目录导入该事实源。
+- `fw/Directory.Build.props` 统一 core、Kit、tool 与测试工程的 target framework，并把 C# 警告视为错误；`fw/csharp/Directory.Build.props` 只负责向生成器和验证器导入该事实源。
 - C# snapshot 冻结 `Fw.Rt.*` 的公开类型、继承关系、构造、字段、属性访问器、事件、方法和运算符；Godot snapshot 自动扫描 `fw/scripts/fw` 下全部 `class_name`，冻结直接基类、方法签名与默认值、signal、属性和常量值。
 - `fw/tests/runtime_test.gd` 覆盖 binding 所有权、pool 状态互斥、ViewStore 缓存、UI wrapper/form logic、失效 UI stack、GDScript system 与 mode 回滚；`fw/tools/verify_runtime.gd` 覆盖 event/FSM/system、asset 并发与 provider 生命周期、pool/log/audio/display/debug。普通 Godot `ERROR` 默认会让测试失败，仅逐条列出的故障注入可放行。
 

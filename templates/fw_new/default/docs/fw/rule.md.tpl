@@ -25,13 +25,13 @@
 - `core` 是所有目标必带的短小基础层，不在 `fw.toml` 中重复声明。
 - 运行时 Kit 固定为 `app / anim / net / rec / ai / lua`；具体玩法、物品、地图、Boss、法术和游戏 AI 留在宿主。
 - Kit 只能直接依赖 `core`，不得横向依赖其他 Kit；同一 Kit 内的 adapter 子程序集可以依赖本 Kit 主程序集。
-- `tool` 可以依赖 `core` 和任意 Kit；运行时 Kit 不得反向依赖 `tool`。迁移期的 `FwRuntime` 兼容外观是唯一例外，只负责转发旧公开类型，不得被 `[use]` 装入新目标。
+- `tool` 可以依赖 `core` 和任意 Kit；运行时 Kit 不得反向依赖 `tool`。
 - `app` 保存 Godot app/mode、asset、pool、UI、本地化、音频、显示和调试能力；`anim` 保存共享动作采样、朝向、motion match、Rig、IK 和骨骼外观能力。
 - `net` 保存 transport、投递、输入历史、房间、心跳和票据，不保存录像；`rec` 保存帧归档、checkpoint、恢复和 seek，不依赖网络。
 - `ai` 只保存运行时决策、导航、搜索和模型推理；训练、评测和 league 属于 `tool/train`，网络故障模拟属于 `tool/e2e`。
 - `lua` 只表示 MoonSharp 沙箱、query、command 和 ScriptGraph，不得伪装成包含加载、依赖、安全、版本与发布流程的完整 Mod 系统。
-- `[use].game` 与 `[use].host` 分别声明目标使用的 Kit；数组只能包含 Kit 短名，重复项、未知项和显式 `core` 必须失败。`app` 只投影给 game，host 选择它必须失败而不是静默忽略。
-- 启用 `[use]` 的 Godot 工程只读取 `scripts/_fw` 投影；`sync` 必须隐藏框架源脚本，避免重复 UID/class，并删除已禁用 Kit 的旧投影。
+- `[use].game` 与 `[use].host` 是必填项，分别声明目标使用的 Kit；数组只能包含 Kit 短名，重复项、未知项和显式 `core` 必须失败。`app` 只投影给 game，host 选择它必须失败而不是静默忽略。
+- Godot 工程只读取 `scripts/_fw` 投影；`sync` 必须隐藏框架源脚本，避免重复 UID/class，并删除已禁用 Kit 的旧投影。
 
 ### Context
 - mode context 和 system context 都使用 `refs / config / state`。
@@ -124,7 +124,7 @@
 - config 字段只允许文档声明的标量、`Fixed32` 与同 schema message；未支持的 enum 或标量必须在生成前失败。
 - `Fixed32` 是可选的空 marker，表示 signed Q24.8；不得给 marker 添加字段或改变 256 scale。
 - config pack 必须包含 magic、版本、schema hash、payload length 和 payload checksum，并使用原子替换写入。
-- config pack 的 C# 编解码合同只允许由纯 C# `FwRuntime.ConfigPack` 实现；生成器和生成 codec 不得各自复制格式解析。
+- config pack 的 C# 编解码合同只允许由纯 C# `Fw.Rt.Config.ConfigPack` 实现；生成器和生成 codec 不得各自复制格式解析。
 - 调整数据行只需 check/pack；只有 schema 或 CSV/JSON 文件布局变化才需要重新生成 config 代码。
 
 ### AI
@@ -221,9 +221,9 @@
 - `project.godot [dotnet].project/assembly_name` 必须等于 `fw.toml [project].name`。
 - 本地和 CI 必须执行相同的 generator test、模板生成、Release/Debug 构建和 Godot headless 测试。
 
-### 兼容
-- 框架公共合同包括 Godot 基类与 service、Kit 公共 API、兼容聚合器 `FwRuntime`、`fw.toml`、生成命令、schema 子集和生成类型；改名、删除或改变既有语义都属于兼容性变更。
-- 旧工程可在一个迁移版本内继续引用 `FwRuntime` 和 `res://fw/scripts/fw`；`FwRuntime` 必须用类型转发同时保持源码与既有 DLL 的程序集限定类型解析。新工程必须使用生成的 Kit 引用和 `res://scripts/_fw/fw`；移除兼容层属于 major 变更。
+### 版本
+- 框架公共合同包括 Godot 基类与 service、Kit 公共 API、`fw.toml`、生成命令、schema 子集和生成类型；改名、删除或改变既有语义都属于破坏性变更。
+- fw 不提供聚合程序集、类型转发或旧 Godot 路径回退。升级到破坏性版本时，宿主必须更新 `[use]`、重新执行 `sync` 并修正直接 API 调用。
 - 对外发布使用 Semantic Versioning Git tag；破坏兼容性升级 major，向后兼容能力升级 minor，只修复既有行为升级 patch。
 - 宿主工程必须通过 submodule commit 锁定精确框架版本，不跟随浮动分支运行或发布。
 - 框架升级后必须重新生成并完成 check、build、test；submodule 指针与对应生成产物必须在同一宿主变更中收束。
