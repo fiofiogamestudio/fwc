@@ -150,7 +150,6 @@ static void VerifyNet()
 
     VerifyReliableCommandsUnderFaults();
 
-    int port = ReserveUdpPort();
     var options = new NetTransportOptions
     {
         ConnectionKey = "fw-net-verify",
@@ -160,12 +159,22 @@ static void VerifyNet()
     };
     using var server = new LiteNetTransport();
     using var client = new LiteNetTransport();
-    True(server.StartServer(port, options), "network loopback server start");
+    int port = StartServerOnAvailablePort(server, options, "network loopback server start");
     True(client.StartClient("127.0.0.1", port, options), "network loopback client start");
-    WaitUntil(
-        () => client.IsConnected && server.Snapshot().Peers == 1,
-        "network loopback connect"
-    );
+    try
+    {
+        WaitUntil(
+            () => client.IsConnected && server.Snapshot().Peers == 1,
+            "network loopback connect"
+        );
+    }
+    catch (InvalidOperationException error)
+    {
+        throw new InvalidOperationException(
+            $"{error.Message} Server: {server.Snapshot()}. Client: {client.Snapshot()}.",
+            error
+        );
+    }
 
     byte[] payload = [1, 2, 3, 4];
     True(client.SendToServer(payload, 1, NetDelivery.ReliableOrdered), "network reliable send");
@@ -201,11 +210,13 @@ static void VerifyNet()
 
     using var discovery = new LiteNetTransport();
     True(discovery.StartUnconnected(options), "network discovery start");
-    True(
-        discovery.SendUnconnected(new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port), [8, 7]),
-        "network discovery send"
+    var discoveryEndPoint = new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, port);
+    NetReceivedMessage unconnected = WaitUnconnectedMessage(
+        server,
+        discovery,
+        discoveryEndPoint,
+        [8, 7]
     );
-    NetReceivedMessage unconnected = WaitMessage(server, message => !message.Connected);
     Equal((byte)8, unconnected.Payload[0], "network discovery payload");
     for (int index = 0; index < 64; index++)
     {
@@ -219,10 +230,9 @@ static void VerifyNet()
     }
     WaitUntil(() => server.Snapshot().QueueDrops > 0, "network bounded receive queue");
 
-    int tcpPort = ReserveTcpPort();
     using var tcpServer = new TcpNetTransport();
     using var tcpClient = new TcpNetTransport();
-    True(tcpServer.StartServer(tcpPort, options), "tcp loopback server start");
+    int tcpPort = StartServerOnAvailablePort(tcpServer, options, "tcp loopback server start");
     True(tcpClient.StartClient("127.0.0.1", tcpPort, options), "tcp loopback client start");
     WaitUntil(
         () => tcpClient.IsConnected && tcpServer.Snapshot().Peers == 1,
@@ -302,19 +312,21 @@ static void VerifyReliableCommandsUnderFaults()
     Equal(100, ledger.Count, "faulted command ledger applies each id once");
 }
 
-static int ReserveUdpPort()
+static int StartServerOnAvailablePort(
+    INetTransport server,
+    NetTransportOptions options,
+    string label
+)
 {
-    using var socket = new System.Net.Sockets.UdpClient(0);
-    return ((System.Net.IPEndPoint)socket.Client.LocalEndPoint!).Port;
-}
-
-static int ReserveTcpPort()
-{
-    var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
-    listener.Start();
-    int port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port;
-    listener.Stop();
-    return port;
+    for (int attempt = 0; attempt < 32; attempt++)
+    {
+        int port = Random.Shared.Next(20_000, 45_000);
+        if (server.StartServer(port, options))
+        {
+            return port;
+        }
+    }
+    throw new InvalidOperationException($"Verification failed: {label} could not bind a port.");
 }
 
 static void WaitUntil(Func<bool> predicate, string label, int timeoutMilliseconds = 10_000)
@@ -355,6 +367,36 @@ static NetReceivedMessage WaitMessage(
         timeoutMilliseconds
     );
     return result!;
+}
+
+static NetReceivedMessage WaitUnconnectedMessage(
+    INetTransport receiver,
+    INetTransport sender,
+    System.Net.IPEndPoint remoteEndPoint,
+    ReadOnlySpan<byte> payload,
+    int timeoutMilliseconds = 3000
+)
+{
+    long deadline = Environment.TickCount64 + timeoutMilliseconds;
+    long nextSend = 0;
+    while (Environment.TickCount64 < deadline)
+    {
+        long now = Environment.TickCount64;
+        if (now >= nextSend)
+        {
+            True(sender.SendUnconnected(remoteEndPoint, payload), "network discovery send");
+            nextSend = now + 50;
+        }
+        foreach (NetReceivedMessage message in receiver.Receive(64))
+        {
+            if (!message.Connected)
+            {
+                return message;
+            }
+        }
+        Thread.Sleep(5);
+    }
+    throw new InvalidOperationException("Verification failed: network discovery receive timed out.");
 }
 
 static void VerifySystemRuntime()
