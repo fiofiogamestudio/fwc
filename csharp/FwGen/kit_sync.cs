@@ -2,7 +2,7 @@ using System.Text;
 
 static class KitSync
 {
-    private sealed record ProjectSpec(string Kit, string Path);
+    private sealed record ProjectSpec(string Kit, string Path, string Adapter = "");
     private sealed record SyncFile(string Path, string Text);
     private sealed record SyncPlan(
         string ProjectionRoot,
@@ -15,7 +15,7 @@ static class KitSync
     [
         new("anim", "kit/anim/cs/Fw.Anim.csproj"),
         new("net", "kit/net/cs/Fw.Net.csproj"),
-        new("net", "kit/net/cs/lite/Fw.Net.Lite.csproj"),
+        new("net", "kit/net/cs/lite/Fw.Net.Lite.csproj", "lite"),
         new("rec", "kit/rec/cs/Fw.Rec.csproj"),
         new("ai", "kit/ai/cs/Fw.AI.csproj"),
         new("lua", "kit/lua/cs/Fw.Lua.csproj"),
@@ -74,8 +74,8 @@ static class KitSync
         };
         var files = new List<SyncFile>();
 
-        AddProps(files, inputs, fwRoot, config.GameKitPropsPath(root), config.GameKits());
-        AddProps(files, inputs, fwRoot, config.HostKitPropsPath(root), config.HostKits());
+        AddProps(files, inputs, fwRoot, config.GameKitPropsPath(root), config.GameKits(), config.NetAdapter("game"));
+        AddProps(files, inputs, fwRoot, config.HostKitPropsPath(root), config.HostKits(), config.NetAdapter("host"));
 
         var projectionRoot = config.GodotFwDir(root);
         var sourceRoot = Path.Combine(fwRoot, "scripts", "fw");
@@ -159,13 +159,14 @@ static class KitSync
         HashSet<string> inputs,
         string fwRoot,
         string output,
-        IReadOnlyList<string> kits
+        IReadOnlyList<string> kits,
+        string netAdapter
     )
     {
         var selected = kits.ToHashSet(StringComparer.Ordinal);
         var projectPaths = new List<string> { Path.Combine(fwRoot, "core", "cs", "Fw.Core.csproj") };
         projectPaths.AddRange(Projects
-            .Where(project => selected.Contains(project.Kit))
+            .Where(project => selected.Contains(project.Kit) && (project.Adapter.Length == 0 || project.Adapter == netAdapter))
             .Select(project => Path.Combine(fwRoot, project.Path.Replace('/', Path.DirectorySeparatorChar))));
 
         foreach (var path in projectPaths)

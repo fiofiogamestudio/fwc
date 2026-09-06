@@ -13,6 +13,7 @@ static class SystemTests
         new("fw config rejects unknown keys", TestUnknownFwConfigKey),
         new("fw config contains paths", TestFwConfigPathContainment),
         new("fw config validates kit use", TestFwConfigKitUse),
+        new("fw net adapter selection is explicit and validated", TestNetAdapterSelection),
         new("fw check requires a real kit import", TestProjectImport),
         new("fw sync selects kit outputs", TestKitSync),
         new("manifest requires complete outputs", TestManifestOutputSet),
@@ -228,6 +229,24 @@ static class SystemTests
         });
     }
 
+    private static void TestNetAdapterSelection()
+    {
+        WithTempDir(root =>
+        {
+            Write(root, "fw.toml", "[use]\ngame = [\"net\"]\nhost = [\"net\"]\ngame_net_adapter = \"none\"\n");
+            var config = FwConfig.Load(root);
+            Equal("none", config.NetAdapter("game"), "game adapter opt-out");
+            Equal("lite", config.NetAdapter("host"), "host retains backward-compatible default");
+            foreach (string value in new[] { "\"unknown\"", "\"\"", "[\"lite\"]" })
+            {
+                Write(root, "fw.toml", $"[use]\ngame = [\"net\"]\nhost = []\ngame_net_adapter = {value}\n");
+                Throws(() => FwConfig.Load(root), "must be");
+            }
+            Write(root, "fw.toml", "[use]\ngame = []\nhost = []\nhost_net_adapter = \"lite\"\n");
+            Throws(() => FwConfig.Load(root), "requires net");
+        });
+    }
+
     private static void TestProjectImport()
     {
         WithTempDir(root =>
@@ -301,6 +320,18 @@ static class SystemTests
             True(hostProps.Contains("Fw.Net.Lite.csproj", StringComparison.Ordinal), "host net ref");
             True(hostProps.Contains("Fw.Rec.csproj", StringComparison.Ordinal), "host rec ref");
             True(!hostProps.Contains("Fw.Anim.csproj", StringComparison.Ordinal), "host excludes anim");
+
+            var originalToml = File.ReadAllText(Path.Combine(root, "fw.toml"));
+            Write(root, "fw.toml", originalToml + "\nhost_net_adapter = \"none\"\n");
+            var adapterless = FwConfig.Load(root);
+            KitSync.Run(root, adapterless);
+            var adapterlessProps = File.ReadAllText(adapterless.HostKitPropsPath(root));
+            True(adapterlessProps.Contains("Fw.Net.csproj", StringComparison.Ordinal), "net abstraction remains selected");
+            True(!adapterlessProps.Contains("Fw.Net.Lite.csproj", StringComparison.Ordinal), "default transport package can be excluded");
+            True(File.ReadAllText(adapterless.GameKitPropsPath(root)) == gameProps, "host adapter selection does not change game target");
+            Write(root, "fw.toml", originalToml);
+            KitSync.Run(root, FwConfig.Load(root));
+            Equal(hostProps, File.ReadAllText(config.HostKitPropsPath(root)), "re-enabling default restores identical props");
 
             var projectedForm = Path.Combine(config.GodotFwDir(root), "fw/vu/ui/_form.gd");
             True(File.Exists(projectedForm), "app projection");

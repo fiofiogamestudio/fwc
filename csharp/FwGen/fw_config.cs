@@ -15,7 +15,7 @@ sealed class FwConfig
             ["pack"] = new(StringComparer.Ordinal) { "config" },
             ["script"] = new(StringComparer.Ordinal) { "gdscript", "csharp" },
             ["dotnet"] = new(StringComparer.Ordinal) { "game", "host", "fwgen" },
-            ["use"] = new(StringComparer.Ordinal) { "game", "host" },
+            ["use"] = new(StringComparer.Ordinal) { "game", "host", "game_net_adapter", "host_net_adapter" },
         };
 
     private readonly Dictionary<string, Dictionary<string, string>> _sections;
@@ -71,6 +71,11 @@ sealed class FwConfig
     public IReadOnlyList<string> HostKits()
     {
         return Values("use", "host", []);
+    }
+
+    public string NetAdapter(string target)
+    {
+        return Value("use", $"{target}_net_adapter", "lite");
     }
 
     public string PathValue(string root, string section, string key, string fallback)
@@ -315,7 +320,27 @@ sealed class FwConfig
         }
         config.ValidateKitList(path, "game");
         config.ValidateKitList(path, "host");
+        config.ValidateNetAdapter(path, "game");
+        config.ValidateNetAdapter(path, "host");
         return config;
+    }
+
+    private void ValidateNetAdapter(string path, string target)
+    {
+        string key = $"{target}_net_adapter";
+        if (HasValues("use", key))
+        {
+            throw new InvalidOperationException($"{path} [use].{key} must be a string: lite or none");
+        }
+        if (!HasValue("use", key)) return;
+        if (NetAdapter(target) is not ("lite" or "none"))
+        {
+            throw new InvalidOperationException($"{path} [use].{key} must be lite or none");
+        }
+        if (!Values("use", target, []).Contains("net", StringComparer.Ordinal))
+        {
+            throw new InvalidOperationException($"{path} [use].{key} requires net in [use].{target}");
+        }
     }
 
     private static string StripComment(string line)
