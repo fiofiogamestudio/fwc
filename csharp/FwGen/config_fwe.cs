@@ -61,6 +61,23 @@ static class ConfigFwe
             Name = field.Name,
             ProtoType = field.Type,
             EditorType = EditorType(field, isMessage),
+            ValueEncoding = field.Type is "int64" or "sint64" or "uint64" ? "decimal-integer" : null,
+            Minimum = field.Type switch
+            {
+                "uint32" or "uint64" => "0",
+                "int32" or "sint32" => "-2147483648",
+                "int64" or "sint64" => "-9223372036854775808",
+                _ => null,
+            },
+            Maximum = field.Type switch
+            {
+                "uint32" => "4294967295",
+                "uint64" => "18446744073709551615",
+                "int32" or "sint32" => "2147483647",
+                "int64" or "sint64" => "9223372036854775807",
+                _ => null,
+            },
+            Finite = field.Type is "float" or "double" or "Fixed32" ? true : null,
             Repeated = field.IsRepeated,
             Reference = isMessage && ConfigSchema.IsConfigMessage(field.Type)
                 ? ConfigSchema.ConfigRootName(field.Type)
@@ -85,7 +102,8 @@ static class ConfigFwe
         {
             "bool" => "bool",
             "float" or "double" or "Fixed32" => "number",
-            "int32" or "int64" or "uint32" or "uint64" or "sint32" or "sint64" => "int",
+            "int32" or "uint32" or "sint32" => "int",
+            "int64" or "uint64" or "sint64" => "string",
             _ => "string",
         };
     }
@@ -117,6 +135,10 @@ static class ConfigFwe
         public required string Name { get; init; }
         public required string ProtoType { get; init; }
         public required string EditorType { get; init; }
+        public string? ValueEncoding { get; init; }
+        public string? Minimum { get; init; }
+        public string? Maximum { get; init; }
+        public bool? Finite { get; init; }
         public bool Repeated { get; init; }
         public string? Reference { get; init; }
         public string? ObjectType { get; init; }

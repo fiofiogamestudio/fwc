@@ -1,7 +1,7 @@
 using Fw.Rt.Config;
 using static TestKit;
 
-static class ConfigTests
+static partial class ConfigTests
 {
     internal static TestCase[] Cases =>
     [
@@ -19,6 +19,9 @@ static class ConfigTests
         new("duplicate config key fails", TestDuplicateConfigKey),
         new("config Godot CSV blank cells use defaults", TestGodotCsvBlankCellsUseDefaults),
         new("config generates FWE schema contract", TestConfigFweContract),
+        new("config numeric validation preserves declared ranges", TestNumericValidation),
+        new("generated config numeric and immutable C# round trip", TestGeneratedNumericRuntime),
+        new("generated config numeric Godot round trip", TestGeneratedNumericGodot),
     ];
 
     private static void TestConfigPackHeader()
@@ -350,13 +353,14 @@ static class ConfigTests
                   string display_name = 1;
                   uint32 count = 2;
                   Fixed32 weight = 3;
+                  uint64 exact_id = 4;
                 }
                 message GameConfig {
                   ItemConfig initial_item = 1;
                   repeated string tags = 2;
                 }
                 """);
-            Write(root, "data/config/item.csv.txt", "key,display_name,count,weight\ndefault,Item,1,1.5\n");
+            Write(root, "data/config/item.csv.txt", "key,display_name,count,weight,exact_id\ndefault,Item,1,1.5,18446744073709551615\n");
             Write(root, "data/config/game.json", """
                 [
                   {
@@ -381,6 +385,11 @@ static class ConfigTests
             Equal("key", item.GetProperty("headers")[0].GetString(), "FWE synthetic key");
             Equal("int", item.GetProperty("fields")[1].GetProperty("editorType").GetString(), "FWE integer type");
             Equal("number", item.GetProperty("fields")[2].GetProperty("editorType").GetString(), "FWE fixed type");
+            Equal("4294967295", item.GetProperty("fields")[1].GetProperty("maximum").GetString(), "FWE uint32 exact range");
+            True(item.GetProperty("fields")[2].GetProperty("finite").GetBoolean(), "FWE numeric finite constraint");
+            Equal("string", item.GetProperty("fields")[3].GetProperty("editorType").GetString(), "FWE wide integer text editor");
+            Equal("decimal-integer", item.GetProperty("fields")[3].GetProperty("valueEncoding").GetString(), "FWE wide integer encoding");
+            Equal("18446744073709551615", item.GetProperty("fields")[3].GetProperty("maximum").GetString(), "FWE wide integer exact range");
             var game = contract.GetProperty("roots").GetProperty("game");
             Equal("json", game.GetProperty("format").GetString(), "FWE json format");
             Equal(

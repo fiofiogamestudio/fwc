@@ -218,9 +218,13 @@ static class ConfigSchema
         var names = new List<(string Source, string Identifier)>
         {
             ("generated scalar int parser", "int"),
+            ("generated scalar uint parser", "uint"),
+            ("generated scalar long parser", "long"),
+            ("generated scalar ulong parser", "ulong"),
             ("generated scalar bool parser", "bool"),
             ("generated scalar fixed parser", "fixed"),
             ("generated scalar float parser", "float"),
+            ("generated scalar double parser", "double"),
             ("generated scalar string parser", "string"),
             ("generated scalar array parser", "array"),
         };

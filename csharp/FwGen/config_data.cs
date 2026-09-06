@@ -1,5 +1,4 @@
 using Fw.Rt.Config;
-using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using static ConfigSchema;
@@ -324,20 +323,8 @@ static class ConfigData
                 JsonValueKind.String => PackStringBool(item.GetString() ?? "", ctx),
                 _ => throw new InvalidOperationException($"{ctx} must be bool"),
             },
-            "float" or "double" => PackJsonDouble(item, ctx),
+            "float" or "double" or "uint32" or "uint64" or "int32" or "sint32" or "int64" or "sint64" => ConfigNumeric.Json(item, type, ctx),
             "Fixed32" => PackFixed(PackJsonDouble(item, ctx)),
-            "uint64" => item.ValueKind == JsonValueKind.String
-                ? ulong.Parse(item.GetString() ?? "0", CultureInfo.InvariantCulture)
-                : item.GetUInt64(),
-            "uint32" => item.ValueKind == JsonValueKind.String
-                ? int.Parse(item.GetString() ?? "0", CultureInfo.InvariantCulture)
-                : item.GetInt32(),
-            "int64" or "sint64" => item.ValueKind == JsonValueKind.String
-                ? long.Parse(item.GetString() ?? "0", CultureInfo.InvariantCulture)
-                : item.GetInt64(),
-            "int32" or "sint32" => item.ValueKind == JsonValueKind.String
-                ? int.Parse(item.GetString() ?? "0", CultureInfo.InvariantCulture)
-                : item.GetInt32(),
             _ => item.ValueKind == JsonValueKind.String ? item.GetString() ?? "" : item.ToString(),
         };
     }
@@ -348,12 +335,8 @@ static class ConfigData
         {
             "string" => raw,
             "bool" => PackStringBool(raw, type),
-            "float" or "double" => double.Parse(raw, CultureInfo.InvariantCulture),
-            "Fixed32" => PackFixed(double.Parse(raw, CultureInfo.InvariantCulture)),
-            "uint64" => ulong.Parse(raw, CultureInfo.InvariantCulture),
-            "uint32" => int.Parse(raw, CultureInfo.InvariantCulture),
-            "int64" or "sint64" => long.Parse(raw, CultureInfo.InvariantCulture),
-            "int32" or "sint32" => int.Parse(raw, CultureInfo.InvariantCulture),
+            "float" or "double" or "uint32" or "uint64" or "int32" or "sint32" or "int64" or "sint64" => ConfigNumeric.Text(raw, type, type),
+            "Fixed32" => PackFixed((double)ConfigNumeric.Text(raw, "double", "Fixed32")),
             _ => raw,
         };
     }
@@ -370,11 +353,7 @@ static class ConfigData
 
     private static double PackJsonDouble(JsonElement item, string ctx)
     {
-        return item.ValueKind == JsonValueKind.String
-            ? double.Parse(item.GetString() ?? "0", CultureInfo.InvariantCulture)
-            : item.ValueKind == JsonValueKind.Number
-                ? item.GetDouble()
-                : throw new InvalidOperationException($"{ctx} must be numeric");
+        return (double)ConfigNumeric.Json(item, "double", ctx);
     }
 
     private static int PackFixed(double value)

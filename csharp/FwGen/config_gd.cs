@@ -14,6 +14,8 @@ static class ConfigGd
 
         var text = new StringBuilder();
         text.Append(GdRuntimePrelude(model.SchemaHash));
+        text.Append(ConfigNumericGd.RuntimePrelude());
+        text.AppendLine();
         RenderGdDefaults(text, model.Messages, schema);
         RenderGdParsers(text, model.Messages, schema, false);
         RenderGdParsers(text, model.Messages, schema, true);
@@ -35,10 +37,68 @@ const PACK_VERSION: int = 1
 const PACK_HEADER_SIZE: int = 76
 const PACK_SCHEMA_HASH: String = "__SCHEMA_HASH__"
 const FIXED32_SCALE: float = 256.0
+static var _error_count: int = 0
 
 static func _fail(message: String) -> void:
+	_error_count += 1
 	push_error(message)
 	assert(false, message)
+
+class _NumericToken:
+	var text: String
+	func _init(raw: String) -> void:
+		text = raw
+
+static func _collect_json_keys(value: Variant, keys: Dictionary) -> void:
+	if value is Dictionary:
+		for key in value:
+			keys[key] = true
+			_collect_json_keys(value[key], keys)
+	elif value is Array:
+		for item in value:
+			_collect_json_keys(item, keys)
+
+static func _restore_json_numbers(value: Variant, marker: String) -> Variant:
+	if value is Dictionary:
+		if value.size() == 1 and value.has(marker):
+			return _NumericToken.new(value[marker])
+		for key in value:
+			value[key] = _restore_json_numbers(value[key], marker)
+	elif value is Array:
+		for index in range(value.size()):
+			value[index] = _restore_json_numbers(value[index], marker)
+	return value
+
+static func _parse_json_exact(text: String, ctx: String) -> Variant:
+	# Godot still validates JSON structure. Only valid numeric tokens are replaced;
+	# strings (including escaped quotes/digits) are never rewritten.
+	var json: JSON = JSON.new()
+	if json.parse(text) != OK:
+		_fail("%s must be valid JSON: %s" % [ctx, json.get_error_message()])
+		return null
+	var keys: Dictionary = {}
+	_collect_json_keys(json.data, keys)
+	var marker: String = "__fw_numeric_token"
+	while keys.has(marker):
+		marker += "_"
+	var tokens: RegEx = RegEx.new()
+	if tokens.compile('"(?:[^"\\\\]|\\\\.)*"|-?(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?') != OK:
+		_fail("config numeric token pattern is invalid")
+		return null
+	var pieces: PackedStringArray = []
+	var position: int = 0
+	for token in tokens.search_all(text):
+		var raw: String = token.get_string()
+		if raw.begins_with('"'):
+			continue
+		pieces.append(text.substr(position, token.get_start() - position))
+		pieces.append("{%s:%s}" % [JSON.stringify(marker), JSON.stringify(raw)])
+		position = token.get_end()
+	pieces.append(text.substr(position))
+	if json.parse("".join(pieces)) != OK:
+		_fail("%s contains an invalid JSON numeric token" % ctx)
+		return null
+	return _restore_json_numbers(json.data, marker)
 
 static func _normalize_csv_header(header: String, index: int) -> String:
 	if index == 0 and not header.is_empty() and header.unicode_at(0) == 0xfeff:
@@ -67,7 +127,7 @@ static func _read_json_array(path: String, ctx: String) -> Array:
 	if file == null:
 		_fail("failed to open %s" % path)
 		return []
-	var parsed: Variant = JSON.parse_string(file.get_as_text())
+	var parsed: Variant = _parse_json_exact(file.get_as_text(), ctx)
 	if not (parsed is Array):
 		_fail("%s must be a json array" % ctx)
 		return []
@@ -116,7 +176,7 @@ static func _read_bin_entries(path: String, ctx: String) -> Array:
 	if _sha256_hex(payload) != bytes.slice(44, 76).hex_encode():
 		_fail("%s payload hash mismatch" % ctx)
 		return []
-	var parsed: Variant = JSON.parse_string(payload.get_string_from_utf8())
+	var parsed: Variant = _parse_json_exact(payload.get_string_from_utf8(), ctx)
 	if not (parsed is Array):
 		_fail("%s binary payload must be an array" % ctx)
 		return []
@@ -143,19 +203,61 @@ static func _object_field(obj: Dictionary, field: String, ctx: String) -> Varian
 		return null
 	return obj[field]
 
+static func _integer_text(value: Variant, ctx: String, minimum: String, maximum: String) -> String:
+	var text: String = ""
+	var json_number: bool = value is _NumericToken
+	if json_number:
+		text = value.text
+	elif typeof(value) == TYPE_STRING:
+		if str(value).length() > 4096:
+			_fail("%s numeric text exceeds 4096 characters" % ctx)
+			return "0"
+		text = str(value).strip_edges()
+	elif typeof(value) == TYPE_INT or typeof(value) == TYPE_FLOAT:
+		var number: float = float(value)
+		if not is_finite(number) or floor(number) != number or abs(number) > float(9007199254740991):
+			_fail("%s must be a safe integer number; use decimal strings for 64-bit values" % ctx)
+			return "0"
+		text = str(int(value))
+	else:
+		_fail("%s must be integer text or a number" % ctx)
+		return "0"
+	if text.length() > 4096:
+		_fail("%s numeric text exceeds 4096 characters" % ctx)
+		return "0"
+	var negative: bool = text.begins_with("-")
+	if negative or text.begins_with("+"):
+		text = text.substr(1)
+	if text.is_empty():
+		_fail("%s must contain integer digits" % ctx)
+		return "0"
+	for index in range(text.length()):
+		if text.unicode_at(index) < 48 or text.unicode_at(index) > 57:
+			_fail("%s must contain only integer digits" % ctx)
+			return "0"
+	while text.length() > 1 and text.begins_with("0"):
+		text = text.substr(1)
+	negative = negative and text != "0"
+	if json_number and (text.length() > 16 or (text.length() == 16 and text > "9007199254740991")):
+		_fail("%s must be a safe integer number; use decimal strings for 64-bit values" % ctx)
+		return "0"
+	var bound: String = minimum.substr(1) if negative and minimum.begins_with("-") else maximum
+	if (negative and not minimum.begins_with("-")) or text.length() > bound.length() or (text.length() == bound.length() and text > bound):
+		_fail("%s integer is outside [%s, %s]" % [ctx, minimum, maximum])
+		return "0"
+	return ("-" if negative else "") + text
+
 static func _parse_text_int(value: Variant, ctx: String) -> int:
-	match typeof(value):
-		TYPE_STRING:
-			var text: String = str(value).strip_edges()
-			if not text.is_valid_int():
-				_fail("%s must be int-compatible text" % ctx)
-				return 0
-			return int(text)
-		TYPE_INT, TYPE_FLOAT:
-			return int(value)
-		_:
-			_fail("%s must be int-compatible value" % ctx)
-			return 0
+	return int(_integer_text(value, ctx, "-2147483648", "2147483647"))
+
+static func _parse_text_uint(value: Variant, ctx: String) -> int:
+	return int(_integer_text(value, ctx, "0", "4294967295"))
+
+static func _parse_text_long(value: Variant, ctx: String) -> int:
+	return int(_integer_text(value, ctx, "-9223372036854775808", "9223372036854775807"))
+
+static func _parse_text_ulong(value: Variant, ctx: String) -> String:
+	return _integer_text(value, ctx, "0", "18446744073709551615")
 
 static func _parse_text_bool(value: Variant, ctx: String) -> bool:
 	match typeof(value):
@@ -173,23 +275,41 @@ static func _parse_text_bool(value: Variant, ctx: String) -> bool:
 	return false
 
 static func _parse_text_fixed(value: Variant, ctx: String) -> float:
-	return _parse_text_float(value, ctx)
+	var scaled: float = round(_parse_text_double(value, ctx) * FIXED32_SCALE)
+	if not is_finite(scaled) or scaled < -2147483648.0 or scaled > 2147483647.0:
+		_fail("%s is outside Q24.8 range" % ctx)
+		return 0.0
+	return float(int(scaled)) / FIXED32_SCALE
 
 static func _parse_text_float(value: Variant, ctx: String) -> float:
-	match typeof(value):
-		TYPE_STRING:
-			var text: String = str(value).strip_edges()
-			if not text.is_valid_float() and not text.is_valid_int():
-				_fail("%s must be float-compatible text" % ctx)
-				return 0.0
-			return float(text)
-		TYPE_INT, TYPE_FLOAT:
-			return float(value)
-		_:
-			_fail("%s must be float-compatible value" % ctx)
-			return 0.0
+	if value is _NumericToken:
+		return _decimal_to_single(value.text, ctx)
+	if typeof(value) == TYPE_STRING:
+		return _decimal_to_single(str(value), ctx)
+	var number: float = _parse_text_double(value, ctx)
+	var single: float = PackedFloat32Array([number])[0]
+	if not is_finite(single):
+		_fail("%s is outside finite float32 range" % ctx)
+		return 0.0
+	return single
+
+static func _parse_text_double(value: Variant, ctx: String) -> float:
+	if value is _NumericToken:
+		return _decimal_to_double(value.text, ctx)
+	if typeof(value) == TYPE_STRING:
+		return _decimal_to_double(str(value), ctx)
+	if typeof(value) != TYPE_INT and typeof(value) != TYPE_FLOAT:
+		_fail("%s must be float-compatible value" % ctx)
+		return 0.0
+	var number: float = float(value)
+	if not is_finite(number):
+		_fail("%s must be a finite double" % ctx)
+		return 0.0
+	return number
 
 static func _parse_text_string(value: Variant, _ctx: String) -> String:
+	if value is _NumericToken:
+		return value.text
 	return str(value)
 
 static func _parse_text_array(value: Variant, ctx: String, item_parser: Callable) -> Array:
@@ -203,18 +323,16 @@ static func _parse_text_array(value: Variant, ctx: String, item_parser: Callable
 	return out
 
 static func _parse_bin_int(value: Variant, ctx: String) -> int:
-	match typeof(value):
-		TYPE_INT, TYPE_FLOAT:
-			return int(value)
-		TYPE_STRING:
-			var text: String = str(value).strip_edges()
-			if not text.is_valid_int():
-				_fail("%s must be int-compatible text" % ctx)
-				return 0
-			return int(text)
-		_:
-			_fail("%s must be int-compatible value" % ctx)
-			return 0
+	return _parse_text_int(value, ctx)
+
+static func _parse_bin_uint(value: Variant, ctx: String) -> int:
+	return _parse_text_uint(value, ctx)
+
+static func _parse_bin_long(value: Variant, ctx: String) -> int:
+	return _parse_text_long(value, ctx)
+
+static func _parse_bin_ulong(value: Variant, ctx: String) -> String:
+	return _parse_text_ulong(value, ctx)
 
 static func _parse_bin_bool(value: Variant, ctx: String) -> bool:
 	if typeof(value) == TYPE_BOOL:
@@ -223,21 +341,13 @@ static func _parse_bin_bool(value: Variant, ctx: String) -> bool:
 	return false
 
 static func _parse_bin_fixed(value: Variant, ctx: String) -> float:
-	return _parse_bin_float(value, ctx) / FIXED32_SCALE
+	return float(_parse_bin_int(value, ctx)) / FIXED32_SCALE
 
 static func _parse_bin_float(value: Variant, ctx: String) -> float:
-	match typeof(value):
-		TYPE_INT, TYPE_FLOAT:
-			return float(value)
-		TYPE_STRING:
-			var text: String = str(value).strip_edges()
-			if not text.is_valid_float() and not text.is_valid_int():
-				_fail("%s must be float-compatible text" % ctx)
-				return 0.0
-			return float(text)
-		_:
-			_fail("%s must be float-compatible value" % ctx)
-			return 0.0
+	return _parse_text_float(value, ctx)
+
+static func _parse_bin_double(value: Variant, ctx: String) -> float:
+	return _parse_text_double(value, ctx)
 
 static func _parse_bin_string(value: Variant, ctx: String) -> String:
 	if typeof(value) == TYPE_STRING:
@@ -260,11 +370,13 @@ static func _clone_value(value: Variant) -> Variant:
 		var out: Dictionary = {}
 		for key in value.keys():
 			out[key] = _clone_value(value[key])
+		out.make_read_only()
 		return out
 	if value is Array:
 		var out: Array = []
 		for item in value:
 			out.append(_clone_value(item))
+		out.make_read_only()
 		return out
 	return value
 
@@ -272,8 +384,8 @@ static func _clone_by_key(entries: Array, key: String) -> Dictionary:
 	for item in entries:
 		var entry: Dictionary = _as_dictionary(item, "entry")
 		if str(entry.get("key", "")) == key:
-			return _clone_value(entry.get("value", {}))
-	return {}
+			return entry.get("value", {})
+	return _clone_value({})
 
 static func _clone_required_by_key(entries: Array, key: String, ctx: String) -> Dictionary:
 	var value: Dictionary = _clone_by_key(entries, key)
@@ -283,19 +395,12 @@ static func _clone_required_by_key(entries: Array, key: String, ctx: String) -> 
 
 static func _clone_by_index(entries: Array, index: int) -> Dictionary:
 	if index < 0 or index >= entries.size():
-		return {}
+		return _clone_value({})
 	var entry: Dictionary = _as_dictionary(entries[index], "entry")
-	return _clone_value(entry.get("value", {}))
+	return entry.get("value", {})
 
 static func _clone_all(entries: Array) -> Array:
-	var out: Array = []
-	for item in entries:
-		var entry: Dictionary = _as_dictionary(item, "entry")
-		out.append({
-			"key": str(entry.get("key", "")),
-			"value": _clone_value(entry.get("value", {})),
-		})
-	return out
+	return entries
 
 """.Replace("__SCHEMA_HASH__", schemaHash, StringComparison.Ordinal);
     }
@@ -394,7 +499,7 @@ static func _clone_all(entries: Array) -> Array:
         text.AppendLine("\tfor index in range(items.size()):");
         text.AppendLine($"\t\tvar item: Dictionary = _as_dictionary(items[index], \"%s[%d]\" % [\"{root.Name}\", index])");
         text.AppendLine($"\t\tvar ctx: String = \"{root.Name}[%d]\" % index");
-        text.AppendLine($"\t\tentries.append({{\"key\": _parse_text_string(_object_field(item, \"key\", ctx), \"%s.key\" % ctx), \"value\": _parse_text_{parseName}(item, ctx)}})");
+        text.AppendLine($"\t\tentries.append({{\"key\": _parse_bin_string(_object_field(item, \"key\", ctx), \"%s.key\" % ctx), \"value\": _parse_text_{parseName}(item, ctx)}})");
         text.AppendLine("\treturn entries");
         text.AppendLine();
     }
@@ -418,10 +523,15 @@ static func _clone_all(entries: Array) -> Array:
         text.AppendLine($"static func _load_{root.Name}_entries() -> Array:");
         text.AppendLine($"\tif _{root.Name}_loaded:");
         text.AppendLine($"\t\treturn _{root.Name}_entries");
+        text.AppendLine("\tvar errors_before: int = _error_count");
+        text.AppendLine("\tvar loaded: Array");
         text.AppendLine("\tif OS.has_feature(\"editor\"):");
-        text.AppendLine($"\t\t_{root.Name}_entries = _load_{root.Name}_text()");
+        text.AppendLine($"\t\tloaded = _load_{root.Name}_text()");
         text.AppendLine("\telse:");
-        text.AppendLine($"\t\t_{root.Name}_entries = _load_{root.Name}_bin()");
+        text.AppendLine($"\t\tloaded = _load_{root.Name}_bin()");
+        text.AppendLine("\tif _error_count != errors_before:");
+        text.AppendLine("\t\treturn _clone_value([])");
+        text.AppendLine($"\t_{root.Name}_entries = _clone_value(loaded)");
         text.AppendLine($"\t_{root.Name}_loaded = true");
         text.AppendLine($"\treturn _{root.Name}_entries");
         text.AppendLine();
@@ -438,7 +548,7 @@ static func _clone_all(entries: Array) -> Array:
         text.AppendLine($"\tvar value: Dictionary = {root.Name}_by_key(\"default\")");
         text.AppendLine("\tif value.is_empty():");
         text.AppendLine($"\t\t_fail(\"generated config source must contain default for {root.Name}\")");
-        text.AppendLine($"\t\treturn _default_{root.Name}_config()");
+        text.AppendLine("\t\treturn _clone_value({})");
         text.AppendLine("\treturn value");
         text.AppendLine();
     }
@@ -447,7 +557,7 @@ static func _clone_all(entries: Array) -> Array:
     {
         if (field.IsRepeated)
         {
-            return $"_parse_text_array(JSON.parse_string({valueExpr}), {ctxExpr}, {GdParserName(field.Type, false)})";
+            return $"_parse_text_array(_parse_json_exact({valueExpr}, {ctxExpr}), {ctxExpr}, {GdParserName(field.Type, false)})";
         }
         if (IsMessageType(field.Type, schema) && field.Type != "Fixed32")
         {
@@ -455,7 +565,7 @@ static func _clone_all(entries: Array) -> Array:
             {
                 return $"_clone_required_by_key(_load_{ConfigRootName(field.Type)}_entries(), {valueExpr}, {ctxExpr})";
             }
-            return $"_parse_text_{TextUtil.Snake(field.Type)}(JSON.parse_string({valueExpr}), {ctxExpr})";
+            return $"_parse_text_{TextUtil.Snake(field.Type)}(_parse_json_exact({valueExpr}, {ctxExpr}), {ctxExpr})";
         }
         return $"{GdScalarParser(field.Type, false)}({valueExpr}, {ctxExpr})";
     }
@@ -496,8 +606,12 @@ static func _clone_all(entries: Array) -> Array:
         {
             "string" => binary ? "_parse_bin_string" : "_parse_text_string",
             "bool" => binary ? "_parse_bin_bool" : "_parse_text_bool",
-            "float" or "double" => binary ? "_parse_bin_float" : "_parse_text_float",
-            "uint32" or "uint64" or "int32" or "sint32" or "int64" or "sint64" => binary ? "_parse_bin_int" : "_parse_text_int",
+            "float" => binary ? "_parse_bin_float" : "_parse_text_float",
+            "double" => binary ? "_parse_bin_double" : "_parse_text_double",
+            "uint32" => binary ? "_parse_bin_uint" : "_parse_text_uint",
+            "uint64" => binary ? "_parse_bin_ulong" : "_parse_text_ulong",
+            "int64" or "sint64" => binary ? "_parse_bin_long" : "_parse_text_long",
+            "int32" or "sint32" => binary ? "_parse_bin_int" : "_parse_text_int",
             _ => binary ? $"_parse_bin_{TextUtil.Snake(type)}" : $"_parse_text_{TextUtil.Snake(type)}",
         };
     }
@@ -539,6 +653,10 @@ static func _clone_all(entries: Array) -> Array:
         if (field.Type == "string")
         {
             return "\"\"";
+        }
+        if (field.Type == "uint64")
+        {
+            return "\"0\"";
         }
         if (IsMessageType(field.Type, schema))
         {
