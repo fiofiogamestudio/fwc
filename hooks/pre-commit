@@ -23,8 +23,6 @@ sync_file() {
     changed=1
 }
 
-sync_file "$fw_root/.codex/skills/fw/SKILL.md" \
-    "$template_root/.codex/skills/fw/SKILL.md.tpl"
 sync_file "$fw_root/docs/rule.md" "$template_root/docs/fw/rule.md.tpl"
 sync_file "$fw_root/docs/spec.md" "$template_root/docs/fw/spec.md.tpl"
 sync_file "$fw_root/docs/use.md" "$template_root/docs/fw/use.md.tpl"

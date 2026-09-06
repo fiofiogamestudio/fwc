@@ -1,6 +1,8 @@
-# Fw Use
+# FWC Use
 
 ## 接入
+- 代码仓库是 `https://github.com/fiofiogamestudio/fwc.git`；在已有 Git 游戏工程中用 `git submodule add https://github.com/fiofiogamestudio/fwc.git fw` 接入。
+- FWC 是仓库品牌；宿主 `fw/`、`fw.toml`、`Fw.*` 命名空间、生成协议及 `fw`/`fwgen` 命令继续兼容，不随仓库更名修改。
 - 前提：工程根目录已有 `project.godot`，并把 `fw/` 放在根目录。
 - 空目录也可由默认模板创建最小 `project.godot`；已有文件默认不会覆盖。
 - 初始化：`powershell -ExecutionPolicy Bypass -File fw/tools/new.ps1 -ProjectRoot . -Name MyGame`。
@@ -10,6 +12,11 @@
 - `new` 会生成 system/bridge/config，随后运行配置检查和整体检查；失败不会报告创建成功。
 - `fw.toml [use]` 分别配置 `game` 与 `host`。game 可选 `app / anim / net / rec / ai / lua`，host 可选 `anim / net / rec / ai / lua`；不要写 `core`，它始终自动加入。
 - `project.godot` 必须包含 `[dotnet] project/assembly_name="<project name>"`；`fw check` 会在运行前发现不一致。
+
+## 可选 Agent 技能
+- 通用 `fw-code` 技能从独立 FWS 的 `skills/fw-code/` 安装；FWC 和默认游戏模板不维护技能副本。
+- FWS 是可选工作流工具，不是 FWC 的生成、构建、运行或文档阅读依赖；不使用 Agent 也可按本文完成全部操作。
+- 已有宿主的旧 `.codex/skills/fw/SKILL.md` 不会被 `new/gen/build` 自动删除。迁移前检查宿主定制，确认后显式移除旧副本并使用 FWS 技能，避免新旧技能并存漂移。
 
 ## Kit
 - `app` 是 Godot 应用壳与通用服务，`anim` 是动作/Rig，`net` 是联机，`rec` 是帧归档，`ai` 是运行时决策，`lua` 是可选脚本沙箱。
@@ -199,6 +206,6 @@ Lua 只在玩法确实需要文本脚本时启用，不是可视 AI 图的组成
 
 ## Hook
 - 框架维护者可显式启用：`git -C fw config core.hooksPath hooks`。
-- hook 只同步 `fw` 自己的 skill/docs 到默认模板。
+- hook 只同步 FWC 自己的 `docs/rule.md`、`docs/spec.md`、`docs/use.md` 到默认模板的 `docs/fw/`，不读取或镜像 FWS 技能。
 - 若同步产生差异，提交会停止；检查并暂存派生文件后再次提交。
 - 普通 `new/gen/build` 不会修改 Git hook 配置。

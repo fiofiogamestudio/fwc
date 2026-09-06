@@ -1,6 +1,8 @@
-# fw
+# FWC
 
-`fw/` 是一套放到 Godot 工程根目录即可接入的框架层。
+FWC 是 Godot + C# 的代码框架，仓库为 `fiofiogamestudio/fwc`。安装到游戏工程时仍使用 `fw/` 路径。
+
+仓库名称与宿主接口分开演进：`fw/`、`fw.toml`、`Fw.*` 命名空间、生成协议和 `fw`/`fwgen` 命令保持兼容，不因仓库更名而整体改名。
 
 它提供四类能力：
 - Godot 运行时骨架：`AppRoot -> BaseMode -> SystemManager`
@@ -30,6 +32,12 @@
 ```
 
 ## 快速开始
+在已有 Git 游戏工程中添加框架，保留兼容的安装路径：
+
+```powershell
+git submodule add https://github.com/fiofiogamestudio/fwc.git fw
+```
+
 初始化最小工程骨架：
 
 ```powershell
@@ -74,12 +82,18 @@ just build
 git -C fw config core.hooksPath hooks
 ```
 
-hook 只把 `fw/docs` 和 `fw/.codex/skills/fw` 同步到默认模板；产生差异时会中止提交等待审阅，不会读取宿主工程或自动暂存。
+hook 只把 FWC 的 `docs/rule.md`、`docs/spec.md`、`docs/use.md` 同步到默认模板的 `docs/fw/`；产生差异时会中止提交等待审阅，不会读取宿主工程或自动暂存。
+
+## 可选 Agent 技能
+
+通用 `fw-code` 技能的唯一维护源在独立 FWS 仓库的 `skills/fw-code/`。FWC 不再维护项目内旧 `fw` 技能副本，默认模板也不安装技能。需要 Agent 工作流时单独安装 FWS；FWC 的规范、生成、构建和运行无需 FWS 或任何 Agent 技能。
+
+已有宿主若保留旧 `.codex/skills/fw/SKILL.md`，先检查其中是否有宿主定制，再显式迁移到 FWS 提供的 `fw-code`；框架升级不会自动删除或覆盖宿主技能。
 
 ## 边界
 `fw/` 只承载可复用框架能力，不放当前游戏玩法。
 
-FW、FWE 和 FWA 是可独立使用的组件。FW 游戏不要求安装或运行 FWE/FWA；需要编辑器时，通过可选宿主适配器把生成的配置合同接到 FWE 的 source/model/view。只输出 `_config_schema.json` 不等于已经支持全部 FW CSV/JSON 格式。Kit 也按目标选择；自有网络 transport 可以关闭默认 LiteNetLib adapter，见 [使用说明](docs/use.md)。
+FWC、FWE、FWA 和 FWS 是可独立使用的组件。FWC 游戏不要求安装或运行 FWE/FWA/FWS；需要编辑器时，通过可选宿主适配器把生成的配置合同接到 FWE 的 source/model/view。只输出 `_config_schema.json` 不等于已经支持全部 FW CSV/JSON 格式。Kit 也按目标选择；自有网络 transport 可以关闭默认 LiteNetLib adapter，见 [使用说明](docs/use.md)。
 
 属于 `fw/`：
 - Godot 通用运行时

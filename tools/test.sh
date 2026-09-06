@@ -22,8 +22,7 @@ trap cleanup EXIT
 for pair in \
   "docs/rule.md:templates/fw_new/default/docs/fw/rule.md.tpl" \
   "docs/spec.md:templates/fw_new/default/docs/fw/spec.md.tpl" \
-  "docs/use.md:templates/fw_new/default/docs/fw/use.md.tpl" \
-  ".codex/skills/fw/SKILL.md:templates/fw_new/default/.codex/skills/fw/SKILL.md.tpl"; do
+  "docs/use.md:templates/fw_new/default/docs/fw/use.md.tpl"; do
   source_path="${FW_ROOT}/${pair%%:*}"
   mirror_path="${FW_ROOT}/${pair#*:}"
   cmp -s "${source_path}" "${mirror_path}" || {
@@ -70,6 +69,10 @@ tar \
   -C "${FW_ROOT}" -cf - . | tar -C "${TEST_ROOT}/fw" -xf -
 GENERATOR="${FW_ROOT}/csharp/FwGen/FwGen.csproj"
 dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" craft fw-new --name fw_audit
+[[ ! -e "${TEST_ROOT}/.codex/skills" ]] || {
+  echo "The default FWC template must not install agent skills; FWS is optional and separate." >&2
+  exit 1
+}
 printf '%s\n' \
   '<Project Sdk="Microsoft.NET.Sdk">' \
   '  <PropertyGroup>' \

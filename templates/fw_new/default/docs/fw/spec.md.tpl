@@ -1,7 +1,7 @@
-# Fw Spec
+# FWC Spec
 
 ## 结构
-- `fw/`：可复用框架仓库，只保存运行时、生成器、模板、工具和通用文档。
+- FWC 是可复用代码框架仓库；宿主安装目录仍为 `fw/`，只保存运行时、生成器、模板、工具和通用文档。当前远端地址见使用说明，不能从本地目录名推定已发布的远端名称。
 - `fw/core/cs`：必带的 `Fw.Core`；`fw/kit/<id>`：`app / anim / net / rec / ai / lua`。离线能力分别位于 `fw/tool/train`、`fw/tool/e2e`、`fw/csharp/FwGen` 与 `fw/templates`；FWE 是外部可选编辑器，不是 FW 内置 Kit。
 - `fw.toml`：宿主工程路径与 .NET 工程入口，只接受固定 section/key，所有路径必须位于工程根目录内。
 - `[use].game / host`：必填，按目标选择 Kit，`core` 自动加入；缺失时配置加载直接失败。
@@ -20,6 +20,7 @@
 - `Fw.Rt.Animation`：与玩法无关的固定 tick 程序动作采样器；C# Core 与 Godot 表现可对同一组姿态键执行相同缓动、Y-X-Z 四元数插值和有界自适应子采样。
 
 ## Compatibility
+- FWC 的仓库更名不改变 `fw/` 宿主安装路径、`fw.toml`、`Fw.*` 命名空间、生成协议或 `fw`/`fwgen` CLI；不得把品牌更名当作全局标识符迁移。
 - Godot：`4.6.2 .NET`，由模板、`global.json` 与 CI 共同固定。
 - 构建 SDK：`.NET SDK 10.0.201`；只负责还原和编译，不改变游戏程序集的 API 基线。
 - Target framework：`net8.0`；游戏、DS、Core 与 Kit 保持一致，命令行工具在缺少 8 运行时时允许 `Major` 向前运行。
@@ -223,7 +224,8 @@
 - `fw/tests/runtime_test.gd` 覆盖 binding 所有权、pool 状态互斥、ViewStore 缓存、UI wrapper/form logic、失效 UI stack、GDScript system 与 mode 回滚；`fw/tools/verify_runtime.gd` 覆盖 event/FSM/system、asset 并发与 provider 生命周期、pool/log/audio/display/debug。普通 Godot `ERROR` 默认会让测试失败，仅逐条列出的故障注入可放行。
 
 ## 治理
-- `fw/docs` 与 `fw/.codex/skills/fw/SKILL.md` 是框架规范源。
-- 模板中的 skill/docs 是派生产物。
-- `hooks/pre-commit` 只做 `fw -> template` 同步；若更新派生文件会中止提交，要求审阅并重新暂存。
+- FWC 的 `docs/rule.md`、`docs/spec.md`、`docs/use.md` 是框架规范源；宿主安装后位于 `fw/docs/`。
+- 默认模板中的 `docs/fw/` 是上述文档的派生产物，不作为反向维护源。
+- 通用 `fw-code` 技能源唯一位于独立 FWS 的 `skills/fw-code/`；FWC 与默认模板不再分发旧 `fw` 或另一份 `fw-code` 技能。FWC 的代码和规范不依赖 FWS 才能使用。
+- `hooks/pre-commit` 只做 FWC 文档源到默认模板的同步；若更新派生文件会中止提交，要求审阅并重新暂存。
 - hook 不读取父工程、不自动 `git add`，`new/gen/build` 也不修改 Git 配置。

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- 代码仓库更名为 FWC（`fiofiogamestudio/fwc`），宿主 `fw/`、`fw.toml`、`Fw.*`、生成协议与 CLI 保持兼容。通用 Agent 技能迁至独立 FWS 的 `fw-code`；FWC 和默认模板移除旧 `fw` 技能，文档仍由 FWC 自己维护。已有宿主技能需审阅定制后显式迁移，升级不会自动删除。
 - Net 默认 adapter 变为目标级可选：新增 `[use].game_net_adapter / host_net_adapter = "lite" | "none"`，默认保持 `lite`，自有 transport 可排除 LiteNetLib 引用。FW 编辑元数据仍为可选数据合同，不引入 FWE/FWA 依赖。
 - 修复 Tick 内 shutdown 的遍历失效和 stopped 状态被覆盖，拒绝递归 Tick，Init 内 shutdown 不再复活已清理 runtime；C#/Godot 配套行为回归覆盖取消、清理异常和后续派发。
 - 完整测试在生成数值探针前解析并传递 Godot，CI 禁止静默跳过；Linux 编辑器导入行为与 Windows 对齐。

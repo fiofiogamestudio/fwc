@@ -181,8 +181,7 @@ try {
     foreach ($Pair in @(
         @{ Source = "docs\rule.md"; Mirror = "templates\fw_new\default\docs\fw\rule.md.tpl" },
         @{ Source = "docs\spec.md"; Mirror = "templates\fw_new\default\docs\fw\spec.md.tpl" },
-        @{ Source = "docs\use.md"; Mirror = "templates\fw_new\default\docs\fw\use.md.tpl" },
-        @{ Source = ".codex\skills\fw\SKILL.md"; Mirror = "templates\fw_new\default\.codex\skills\fw\SKILL.md.tpl" }
+        @{ Source = "docs\use.md"; Mirror = "templates\fw_new\default\docs\fw\use.md.tpl" }
     )) {
         $Source = Join-Path $FwRoot $Pair.Source
         $Mirror = Join-Path $FwRoot $Pair.Mirror
@@ -216,6 +215,9 @@ try {
     $Generator = Join-Path $FwRoot "csharp\FwGen\FwGen.csproj"
     & dotnet run --project $Generator -c Release -- --root $TestRoot craft fw-new --name fw_audit
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    if (Test-Path -LiteralPath (Join-Path $TestRoot ".codex\skills")) {
+        throw "The default FWC template must not install agent skills; FWS is optional and separate."
+    }
     $HostProject = Join-Path $TestRoot "host_audit.csproj"
     [IO.File]::WriteAllText(
         $HostProject,
