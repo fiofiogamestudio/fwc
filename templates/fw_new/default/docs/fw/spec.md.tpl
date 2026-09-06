@@ -3,6 +3,7 @@
 ## 结构
 - FWC 是可复用代码框架仓库；新宿主默认安装在 `fwc/`，只保存运行时、生成器、模板、工具和通用文档。顶层 FW 负责可选的组件编排，不成为 FWC 的运行依赖。
 - `fwc/core/cs`：必带的 `Fw.Core`；`fwc/kit/<id>`：`app / anim / net / rec / ai / lua`。离线能力分别位于 `fwc/tool/train`、`fwc/tool/e2e`、`fwc/csharp/FwGen` 与 `fwc/templates`；FWE 是外部可选编辑器，不是 FW 内置 Kit。
+- `fwc/csharp/.gdignore` 是仓库内维护的 Godot 扫描边界：生成器和验证器是命令行工具，不作为游戏资源导入；不会影响 .NET 工程引用或构建。
 - `fw.toml`：宿主工程路径与 .NET 工程入口，只接受固定 section/key，所有路径必须位于工程根目录内。
 - `[use].game / host`：必填，按目标选择 Kit，`core` 自动加入；缺失时配置加载直接失败。
 - `[use].game_net_adapter / host_net_adapter`：可选字符串，选择 `net` 的目标默认使用 `"lite"`，设置 `"none"` 时不引用 LiteNetLib adapter，只保留 `Fw.Net` 合同供宿主自行装配 transport。两目标互不影响，未选择 `net` 时不得声明该选项。

@@ -193,6 +193,7 @@ Lua 只在玩法确实需要文本脚本时启用，不是可视 AI 图的组成
 - 提交前验证：`fwc/tools/test.ps1`。
 - 通用运行时扩展验证：`fwc/tools/verify_runtime.ps1 -ProjectRoot .`；完整测试已经自动执行同一 C#/Godot 探针。
 - 测试会创建并清理临时项目，不写入宿主工程。
+- 临时 FWC 副本会初始化为独立 Git 仓库；生成、构建、Godot 导入和运行后都检查组件仍然干净，测试提交只发生在临时副本内。
 - 本机安装 Godot .NET 时，测试会额外执行 headless 脚本扫描和主场景启动；可用 `GODOT_BIN` 指定版本，或用 `-SkipGodot` 跳过。
 - 冷缓存较慢时可用 `FW_GODOT_EDITOR_TIMEOUT_SECONDS` 和 `FW_GODOT_RUN_TIMEOUT_SECONDS` 调整 headless 超时；默认分别为 90 秒和 30 秒。
 - 正式提交不应使用 `-SkipGodot`；该参数只用于明确缺少 Godot 的临时环境。

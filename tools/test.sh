@@ -28,6 +28,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
+command -v git >/dev/null
+assert_framework_clean() {
+  local label="$1"
+  local status
+  status="$(git -C "${TEST_ROOT}/${FRAMEWORK_PATH}" status --porcelain --untracked-files=all)"
+  if [[ -n "$status" ]]; then
+    echo "The framework fixture became dirty after ${label}:" >&2
+    echo "$status" >&2
+    exit 1
+  fi
+  echo "Framework Git worktree stayed clean after ${label}."
+}
+
 for pair in \
   "docs/rule.md:templates/fw_new/default/docs/fw/rule.md.tpl" \
   "docs/spec.md:templates/fw_new/default/docs/fw/spec.md.tpl" \
@@ -76,6 +89,17 @@ tar \
   --exclude='*/obj' \
   --exclude='*/.godot' \
   -C "${FW_ROOT}" -cf - . | tar -C "${TEST_ROOT}/${FRAMEWORK_PATH}" -xf -
+[[ -f "${TEST_ROOT}/${FRAMEWORK_PATH}/csharp/.gdignore" ]] || {
+  echo 'FWC must exclude its C# CLI and verification tooling from Godot resource imports.' >&2
+  exit 1
+}
+# Commit only the disposable copy, so imports must preserve a real component worktree.
+git -C "${TEST_ROOT}/${FRAMEWORK_PATH}" init --quiet
+git -C "${TEST_ROOT}/${FRAMEWORK_PATH}" add --all
+git -C "${TEST_ROOT}/${FRAMEWORK_PATH}" \
+  -c user.name=FWC-Test -c user.email=fwc-test@example.invalid -c commit.gpgSign=false \
+  -c "core.hooksPath=${TEST_ROOT}/no-hooks" commit --quiet -m 'Framework test fixture'
+git -C "${TEST_ROOT}/${FRAMEWORK_PATH}" ls-files --error-unmatch csharp/.gdignore >/dev/null
 GENERATOR="${FW_ROOT}/csharp/FwGen/FwGen.csproj"
 bash "${FW_ROOT}/tools/new.sh" --project-root "${TEST_ROOT}" --name fw_audit --framework-path "${FRAMEWORK_PATH}" --generator-project "${GENERATOR}"
 [[ ! -e "${TEST_ROOT}/.codex/skills" ]] || {
@@ -123,10 +147,12 @@ pack_after="$(cd "${TEST_ROOT}" && find pack/config -type f -print0 | sort -z | 
 }
 dotnet build "${TEST_ROOT}/fw_audit.csproj" -c Release
 dotnet build "${TEST_ROOT}/host_audit.csproj" -c Release
+assert_framework_clean 'scaffold, generation and Release builds'
 
 if [[ -n "${GODOT_DOTNET}" && -x "${GODOT_DOTNET}" ]]; then
   dotnet build "${TEST_ROOT}/fw_audit.csproj" -c Debug
   timeout "${GODOT_EDITOR_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_editor.log" --import
+  assert_framework_clean 'Godot resource import'
   dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" check
   dotnet build "${TEST_ROOT}/fw_audit.csproj" -c Debug
   mkdir -p "${TEST_ROOT}/scripts/_fw_probe"
@@ -151,6 +177,7 @@ if [[ -n "${GODOT_DOTNET}" && -x "${GODOT_DOTNET}" ]]; then
     -e '/^ERROR: FUI form id cannot be empty\.$/d' \
     "${TEST_ROOT}/godot_runtime.log" \
     | grep -Eiq 'SCRIPT ERROR|Parse Error|Compile Error|Can.t run project|^ERROR:'
+  assert_framework_clean 'Godot runtime, services and main-scene checks'
 else
   echo "Godot .NET not found; headless C# template check skipped. Set GODOT_BIN to enable it."
 fi

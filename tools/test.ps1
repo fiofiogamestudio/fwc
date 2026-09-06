@@ -178,7 +178,17 @@ function Get-TreeSnapshot {
     return ($Entries | Sort-Object) -join "`n"
 }
 
+function Assert-FrameworkClean {
+    param([string]$Label)
+
+    $Status = & git -C $FwLink status --porcelain --untracked-files=all
+    if ($LASTEXITCODE -ne 0) { throw "Could not inspect the framework fixture after $Label." }
+    if ($Status) { throw "The framework fixture became dirty after ${Label}:`n$($Status -join "`n")" }
+    Write-Host "Framework Git worktree stayed clean after $Label."
+}
+
 try {
+    Get-Command git -CommandType Application -ErrorAction Stop | Out-Null
     $Godot = if ($SkipGodot) { $null } else { Resolve-GodotDotNet }
     if ($env:CI -eq "true" -and $null -eq $Godot) {
         throw "CI requires Godot .NET; headless checks cannot be skipped."
@@ -219,6 +229,18 @@ try {
         Where-Object { $_.Name -in @("bin", "obj", ".godot") } |
         Sort-Object { $_.FullName.Length } -Descending |
         Remove-Item -Recurse -Force
+    if (-not (Test-Path -LiteralPath (Join-Path $FwLink 'csharp/.gdignore') -PathType Leaf)) {
+        throw 'FWC must exclude its C# CLI and verification tooling from Godot resource imports.'
+    }
+    # Commit only the disposable copy, so imports must preserve a real component worktree.
+    & git -C $FwLink init --quiet
+    if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the framework fixture repository.' }
+    & git -C $FwLink add --all
+    if ($LASTEXITCODE -ne 0) { throw 'Could not stage the framework fixture.' }
+    & git -C $FwLink -c user.name=FWC-Test -c user.email=fwc-test@example.invalid -c commit.gpgSign=false -c "core.hooksPath=$TestRoot/no-hooks" commit --quiet -m 'Framework test fixture'
+    if ($LASTEXITCODE -ne 0) { throw 'Could not commit the framework fixture.' }
+    & git -C $FwLink ls-files --error-unmatch csharp/.gdignore | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'The Godot tooling boundary must be part of the component commit.' }
     $Generator = Join-Path $FwRoot "csharp\FwGen\FwGen.csproj"
     & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $FwRoot 'tools/new.ps1') -ProjectRoot $TestRoot -Name fw_audit -FrameworkPath $FrameworkPath -GeneratorProject $Generator
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -279,6 +301,7 @@ try {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & dotnet build $HostProject -c Release
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Assert-FrameworkClean -Label 'scaffold, generation and Release builds'
 
     if (-not $SkipGodot) {
         if ($null -ne $Godot) {
@@ -291,6 +314,7 @@ try {
                 -Label "Godot editor check" `
                 -TimeoutSeconds $GodotEditorTimeoutSeconds
             Assert-GodotLog -Path $EditorLog -Label "Godot editor check"
+            Assert-FrameworkClean -Label 'Godot resource import'
             & dotnet run --project $Generator -c Release -- --root $TestRoot check
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & dotnet build (Join-Path $TestRoot "fw_audit.csproj") -c Debug
@@ -343,6 +367,7 @@ try {
                 -Label "Godot game check" `
                 -TimeoutSeconds $GodotRunTimeoutSeconds
             Assert-GodotLog -Path $GameLog -Label "Godot game check"
+            Assert-FrameworkClean -Label 'Godot runtime, services and main-scene checks'
         }
         else {
             Write-Host "Godot .NET not found; headless C# template check skipped. Set GODOT_BIN to enable it."
