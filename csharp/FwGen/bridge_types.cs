@@ -216,9 +216,11 @@ static class BridgeTypes
         if (properties.Contains("Hold") && properties.Contains("Down") && properties.Contains("Up"))
         {
             text.AppendLine();
-            text.AppendLine("    public bool IsHold(int mask) => (Hold & mask) != 0;");
-            text.AppendLine("    public bool IsDown(int mask) => (Down & mask) != 0;");
-            text.AppendLine("    public bool IsUp(int mask) => (Up & mask) != 0;");
+            foreach (var name in new[] { "Hold", "Down", "Up" })
+            {
+                var field = fields.Single(item => IntentPropertyName(item) == name);
+                text.AppendLine($"    public bool Is{name}(int mask) => ({name} & unchecked(({CsIntentType(schema, field)})mask)) != 0;");
+            }
         }
         text.AppendLine("}");
     }

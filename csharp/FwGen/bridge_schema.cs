@@ -77,6 +77,14 @@ static class BridgeSchema
     internal static int ComputeProtocolVersion(ProtoSchema schema)
     {
         var signature = new StringBuilder("fw.bridge.protocol.v1\n");
+        if (schema.Messages.Values.SelectMany(message => message.Fields)
+            .Any(field => field.Type is "double" or "uint32" or "int64" or "sint64" or "uint64"
+                || field.Type.EndsWith("Id", StringComparison.Ordinal)))
+        {
+            // Wide numeric codecs changed semantics/uint64 wire representation.
+            // Unaffected schemas keep their existing protocol identity.
+            signature.Append("scalar-codec|wide-numeric-v2\n");
+        }
         signature.Append("package|").Append(schema.Package).Append('\n');
 
         foreach (var protoEnum in schema.Enums.Values.OrderBy(item => item.Name, StringComparer.Ordinal))
@@ -140,6 +148,13 @@ static class BridgeSchema
 
     private static void ValidateSupportedTypes(ProtoSchema schema)
     {
+        foreach (var marker in schema.Messages.Values.Where(message => message.Name.EndsWith("Id", StringComparison.Ordinal)))
+        {
+            if (marker.Fields.Count != 0)
+                throw new InvalidOperationException($"bridge ID alias `{marker.Name}` must be an empty marker message; rename structured messages without the Id suffix");
+        }
+        foreach (var enumeration in schema.Enums.Values.Where(item => item.Name.EndsWith("Id", StringComparison.Ordinal)))
+            throw new InvalidOperationException($"bridge enum `{enumeration.Name}` conflicts with the Id scalar alias suffix; rename the enum");
         foreach (var message in schema.Messages.Values)
         {
             foreach (var field in message.Fields)
@@ -432,12 +447,14 @@ static class BridgeSchema
     internal static string GdClassNameForEvent(string messageType)
     {
         string shortName = ClassNameForEvent(messageType);
+        if (shortName == "Bridge") return messageType == "Bridge" ? "BridgeEvent" : messageType;
         return GdNativeClassNames.Contains(shortName) ? messageType : shortName;
     }
 
     internal static string GdClassNameForView(string messageType)
     {
         string shortName = ClassNameForView(messageType);
+        if (shortName == "Bridge") return messageType == "Bridge" ? "BridgeView" : messageType;
         return GdNativeClassNames.Contains(shortName) ? messageType : shortName;
     }
 
@@ -583,7 +600,7 @@ static class BridgeSchema
                 }
                 if (types.All(IsIntLike))
                 {
-                    return first with { Type = "int64" };
+                    return first with { Type = types.Contains("uint64", StringComparer.Ordinal) ? "__bridge_integer" : "int64" };
                 }
                 if (types.All(type => type == "string" || schema.Enums.ContainsKey(type)))
                 {
@@ -646,11 +663,15 @@ static class BridgeSchema
         {
             "string" => "string",
             "bool" => "bool",
-            "float" or "double" => "float",
+            "float" => "float",
+            "double" => "double",
             "Vec2i" => "Vector2I",
             "PlayerId" => "long",
             "EntityId" => "int",
-            "int64" or "sint64" or "uint64" => "long",
+            "int64" or "sint64" => "long",
+            "uint32" => "uint",
+            "uint64" => "ulong",
+            "__bridge_integer" => "decimal",
             "bytes" => "byte[]",
             _ when schema.Enums.ContainsKey(type) => "string",
             _ when IsIntLike(type) => "int",
@@ -686,10 +707,6 @@ static class BridgeSchema
         {
             return "uint";
         }
-        if (field.Name is "buttons_hold" or "buttons_down" or "buttons_up")
-        {
-            return "int";
-        }
         return CsCoreType(schema, field.Type, field.IsRepeated);
     }
 
@@ -707,12 +724,16 @@ static class BridgeSchema
     internal static string GdArgType(ProtoSchema schema, ProtoField field)
     {
         if (field.IsRepeated) return "Array";
+        // Keep the original Variant until validation; typed int/float parameters
+        // would coerce invalid inputs before the generated body can reject them.
+        if (BridgeNumeric.IsNumeric(field.Type, schema)) return "Variant";
         return field.Type switch
         {
             "string" => "String",
             "bool" => "bool",
             "float" or "double" => "float",
             "Vec2i" => "Vector2i",
+            "uint64" => "String",
             _ when schema.Enums.ContainsKey(field.Type) => "String",
             _ when IsIntLike(field.Type) => "int",
             _ => "Variant"
@@ -728,6 +749,7 @@ static class BridgeSchema
             "bool" => "bool",
             "float" or "double" => "float",
             "Vec2i" => "Vector2i",
+            "uint64" => "String",
             _ when IsIntLike(field.Type) => "int",
             _ when schema != null && schema.Enums.ContainsKey(field.Type) => "String",
             _ => eventMode ? "Variant" : "String"
@@ -736,6 +758,12 @@ static class BridgeSchema
 
     internal static string GdGetter(ProtoSchema? schema, ProtoField field, bool eventMode)
     {
+        if (BridgeNumeric.IsNumeric(field.Type, schema))
+        {
+            var fallback = field.IsRepeated ? "[]" : field.Type == "uint64" ? "\"0\"" : "0";
+            var method = field.IsRepeated ? "read_array" : "read";
+            return $"Bridge.Numeric.{method}(_raw.get(\"{field.Name}\", {fallback}), \"{field.Type}\", \"{field.Name}\")";
+        }
         if (field.IsRepeated)
         {
             return $"_raw.get(\"{field.Name}\", [])";

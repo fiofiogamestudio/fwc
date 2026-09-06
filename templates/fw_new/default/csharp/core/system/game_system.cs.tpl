@@ -30,7 +30,7 @@ internal sealed class GameSystem : ISystem<CoreContext>
             }
 
             IncrementIntent? payload = action.As<IncrementIntent>();
-            increment += Math.Clamp(payload?.Amount ?? action.Amount, 1, 1000);
+            increment += Math.Clamp(payload?.Amount ?? action.Amount, 1u, 1000u);
         }
 
         if (increment == 0)
@@ -42,8 +42,8 @@ internal sealed class GameSystem : ISystem<CoreContext>
         _context.State.Events.Add(new CoreEvent
         {
             Type = CoreEvent.CountChanged,
-            Payload = new CountChangedEvent { Count = _context.State.Count },
-            Count = _context.State.Count,
+            Payload = new CountChangedEvent { Count = checked((uint)_context.State.Count) },
+            Count = checked((uint)_context.State.Count),
         });
     }
 

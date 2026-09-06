@@ -10,6 +10,7 @@ static class BridgeGd
         text.AppendLine("extends RefCounted");
         text.AppendLine("class_name Bridge");
         text.AppendLine();
+        text.AppendLine(BridgeNumeric.GdHelpers());
         text.Append(RenderGdValue(model));
         text.AppendLine();
         text.Append(RenderGdIntent(model));
@@ -98,11 +99,19 @@ static class BridgeGd
             text.AppendLine();
             var args = action.Fields.Select(item => $"{item.Name}: {GdArgType(schema, item)}");
             text.AppendLine($"\tstatic func {variant.Name}({string.Join(", ", args)}) -> Dictionary:");
+            foreach (var field in action.Fields.Where(field => BridgeNumeric.IsNumeric(field.Type, schema)))
+            {
+                text.AppendLine($"\t\tif not Bridge.Numeric.valid({field.Name}, \"{field.Type}\", \"{field.Name}\", {field.IsRepeated.ToString().ToLowerInvariant()}):");
+                text.AppendLine("\t\t\treturn {}");
+            }
             text.AppendLine("\t\treturn {");
             text.AppendLine($"\t\t\t\"kind\": \"{variant.Name}\",");
             foreach (var field in action.Fields)
             {
-                text.AppendLine($"\t\t\t\"{field.Name}\": {field.Name},");
+                var value = BridgeNumeric.IsNumeric(field.Type, schema)
+                    ? $"Bridge.Numeric.{(field.IsRepeated ? "read_array" : "read")}({field.Name}, \"{field.Type}\", \"{field.Name}\")"
+                    : field.Name;
+                text.AppendLine($"\t\t\t\"{field.Name}\": {value},");
             }
             text.AppendLine("\t\t}");
         }
@@ -189,6 +198,8 @@ static class BridgeGd
             var wrapperName = GdClassNameForEvent(variant.Type);
             text.AppendLine($"\t\t\t\t\"{eventKey}\":");
             text.AppendLine($"\t\t\t\t\tvar ev = {wrapperName}.wrap(raw)");
+            text.AppendLine("\t\t\t\t\tif ev == null:");
+            text.AppendLine("\t\t\t\t\t\treturn");
             text.AppendLine("\t\t\t\t\tfor cb in callbacks:");
             text.AppendLine("\t\t\t\t\t\tif cb.is_valid():");
             text.AppendLine("\t\t\t\t\t\t\tcb.call(ev)");
@@ -235,6 +246,12 @@ static class BridgeGd
         block.AppendLine("\tvar _raw: Dictionary = {}");
         block.AppendLine();
         block.AppendLine($"\tstatic func wrap(raw: Dictionary) -> {className}:");
+        foreach (var field in fields.Where(field => BridgeNumeric.IsNumeric(field.Type, schema)))
+        {
+            var fallback = field.IsRepeated ? "[]" : field.Type == "uint64" ? "\"0\"" : "0";
+            block.AppendLine($"\t\tif not Bridge.Numeric.valid(raw.get(\"{field.Name}\", {fallback}), \"{field.Type}\", \"{field.Name}\", {field.IsRepeated.ToString().ToLowerInvariant()}):");
+            block.AppendLine("\t\t\treturn null");
+        }
         block.AppendLine($"\t\tvar obj: {className} = {className}.new()");
         block.AppendLine("\t\tobj._raw = raw");
         block.AppendLine("\t\treturn obj");

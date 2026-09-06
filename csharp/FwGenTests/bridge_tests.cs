@@ -1,6 +1,6 @@
 using static TestKit;
 
-static class BridgeTests
+static partial class BridgeTests
 {
     internal static TestCase[] Cases =>
     [
@@ -11,6 +11,8 @@ static class BridgeTests
         new("bridge rejects enclosing member collisions", TestBridgeEnclosingMemberCollision),
         new("bridge avoids native GDScript class names", TestGdNativeClassName),
         new("bridge derives protocol version from schema semantics", TestProtocolVersion),
+        new("bridge scalar codecs round trip through real Godot and C#", TestBridgeNumericRuntime),
+        new("bridge rejects ambiguous ID scalar markers", TestBridgeNumericAliasShapes),
     ];
 
     private static void TestBridgeZeroDefaults()

@@ -23,7 +23,7 @@ public partial class game_bridge : Node
     {
         return new GdDictionary
         {
-            [BridgeField.Tick] = _core.Tick,
+            [BridgeField.Tick] = BridgeCodec.EncodeULong(_core.Tick),
             [BridgeField.Count] = _core.Count,
         };
     }
