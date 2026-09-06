@@ -17,6 +17,7 @@
 - game C# 工程导入 `csharp/_gen/_fw_game.props`；声明 `[dotnet].host` 的纯 C# 工程导入 `_fw_host.props`。
 - `scripts/_fw`、两个 `_fw_*.props` 和框架脚本根的 `.gdignore` 都由 `sync` 管理，不手改。禁用 Kit 后再次同步会清理旧投影和引用。
 - `[use].game` 与 `[use].host` 均为必填；C# 必须导入对应 props，Godot 只使用 `res://scripts/_fw/fw`，框架不提供旧程序集或旧路径回退。
+- 自己实现 `INetTransport` 时，在 `[use]` 为选中 `net` 的目标增加 `game_net_adapter = "none"` 或 `host_net_adapter = "none"`，再运行 `sync`。默认值 `"lite"` 保留已有项目行为；`"none"` 只删除默认 adapter 的引用，不自动创建替代 transport，也不影响另一个目标。
 
 ## 日常命令
 - 同步 Kit：`fw/tools/sync.ps1`。
@@ -38,6 +39,7 @@
 3. C# core system 声明 phase 和 type。
 4. 运行 `fw/tools/gen.ps1 system`。
 5. 不手改 `_godot_systems.gd` 或 `_core_systems.cs`。
+6. lifecycle 串行调用，不递归 Tick。Tick 内关闭后本帧不再推进剩余 system；Init 内关闭表示取消初始化，检查返回值/异常与 stopped 状态。不要在已经关闭的 runtime 上继续运行。
 
 ## 修改 Bridge
 1. 按语义修改 `schema/bridge/value.proto`、`intent.proto`、`view.proto`、`event.proto` 或 `packet.proto`。
@@ -45,12 +47,27 @@
 3. 运行 `fw/tools/gen.ps1 bridge`。
 4. 任意未知语法或重复字段都会阻止生成，先修 schema，不绕过 parser。
 5. 五个 proto 必须保留固定语义与共享 package；不要新建第六类 bridge proto。
+6. 宽数值 codec 升级后，重新生成并构建发送端与接收端；使用受影响标量的旧 packet 协议会被拒绝。迁移 C# `uint32` 到 `uint`、`double` 到 `double`、`uint64` 到 `ulong`；不要以强制降位转换掩盖编译错误。
+7. GDScript 的 `uint64` 参数/值使用规范十进制字符串，如 `"18446744073709551615"`；它不是 `int` 或 `float`。C# 手组 View/Packet 的 Godot 字典时调用生成的 `BridgeCodec.EncodeULong`；默认模板的 tick 已按此迁移。
+8. `*Id` 只保留空整数 marker 的既有约定（`PlayerId` 为 signed64，其余为 signed32）。非空 `*Id` message 或 `*Id` enum 会明确报错：结构化值改用其他类型名，整数直接声明对应 `int32 / int64`；不能依赖旧生成器忽略字段的行为。
+9. `BridgeView / BridgeEvent` 的 Godot wrapper 保留完整名称以免遮蔽 `Bridge` 入口；若旧代码引用过 `Bridge.View.Bridge` 或 `Bridge.Event.Bridge`，升级后改为相应完整 wrapper 名称。
 
 ## 修改 Config
 1. 只改数据值：修改 `data/config/*.csv.txt` 或 `.json`，运行 `config_check`，发布前运行 `config_pack`。
 2. 改字段/schema 或切换 CSV/JSON 文件布局：同步 schema/data，再运行 `config`、`config_check`、`config_pack`。
 3. 使用小数定点时在 schema 声明一次空 `message Fixed32 {}`，字段类型写 `Fixed32`；不要给 marker 添加字段。
 4. 宿主需要 FWE 等结构化编辑器时，在 `[gen]` 增加 `fwe = "tools/fwe/_gen"`；编辑器只消费生成的 `_config_schema.json`，不要再维护表头或字段类型副本。
+5. FWE 接入需要可选 source/model 适配器把该合同及 CSV/JSON 转成编辑域；仅设置 `[gen].fwe` 不会启动或安装编辑器。未接编辑器时，fw 的生成、检查、打包和运行链照常独立工作。
+
+数值与只读合同：
+
+- `uint32` 可以使用完整 `0..4294967295`；`double` 不再缩窄成 C# `float`。数值配置拒绝 bool、整数小数、越界值、NaN 和 Infinity。
+- 数值原文（含首尾空白）最多 4096 个字符，过长时改用等价的短科学记数法，不通过截断有效数字绕过检查。Godot 的 CSV/JSON/pack 读取统一使用生成器提供的精确浮点转换，包含子正规数及中点舍入边界。
+- JSON 中的大整数写成字符串，例如 `"id": "18446744073709551615"`、`"tick": "9223372036854775807"`。超出安全整数范围的 64 位 JSON 数值会在 check/pack 时失败；不要先用 JavaScript Number 转换再 stringify。CSV 单元格直接写十进制文本即可。
+- GDScript 的 `uint64` 配置是字符串，即使是零也为 `"0"`。将它作为精确 ID 传递或显示；需要算术时在 C# 的 `ulong` 边界处理，不调用 `int()`/`float()` 丢失高位。
+- C# repeated 配置可枚举和索引，不可 Add/Clear；装配时可传入列表，生成属性会复制并冻结。Godot 配置返回递归只读集合；需要独立可编辑数据时显式复制，修改副本不能成为权威配置变更。
+- Godot 配置加载返回空结果且报告错误时，应停止启动并修复源数据；失败不会占用有效缓存，修复后可重试，不应把空结果当成零值配置继续运行。
+- 升级旧生成合同后必须重新运行 `config`、`config_check`、`config_pack` 并构建宿主。迁移 C# 的 `uint32: int -> uint`、`double: float -> double`、`Fixed32: float -> double` 与 `List<T> -> IReadOnlyList<T>` 调用点；Godot 不再修改配置返回值，64 位旧 pack 必须重打包。本次不是源码/数据完全兼容升级；Bridge 使用自己的生成入口，另按上节同步迁移，不能只生成 config。
 
 ## 程序化骨骼
 - 在宿主 schema/data 中维护一份整数 tick 程序动作轨道；C# Core 使用 `Fw.Rt.Animation.ProceduralActionSampler`，Godot 使用 `FProceduralPose.group_tracks/sample_track`。两端必须使用相同 easing、Y-X-Z 角约定、Quaternion slerp 与采样上限，不能各自重建曲线。

@@ -79,6 +79,8 @@ hook 只把 `fw/docs` 和 `fw/.codex/skills/fw` 同步到默认模板；产生�
 ## 边界
 `fw/` 只承载可复用框架能力，不放当前游戏玩法。
 
+FW、FWE 和 FWA 是可独立使用的组件。FW 游戏不要求安装或运行 FWE/FWA；需要编辑器时，通过可选宿主适配器把生成的配置合同接到 FWE 的 source/model/view。只输出 `_config_schema.json` 不等于已经支持全部 FW CSV/JSON 格式。Kit 也按目标选择；自有网络 transport 可以关闭默认 LiteNetLib adapter，见 [使用说明](docs/use.md)。
+
 属于 `fw/`：
 - Godot 通用运行时
 - Godot UI / View 子框架

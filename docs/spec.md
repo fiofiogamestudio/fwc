@@ -2,9 +2,10 @@
 
 ## 结构
 - `fw/`：可复用框架仓库，只保存运行时、生成器、模板、工具和通用文档。
-- `fw/core/cs`：必带的 `Fw.Core`；`fw/kit/<id>`：`app / anim / net / rec / ai / lua`；`fw/tool`：gen、train、e2e、FWE 和模板等开发能力。
+- `fw/core/cs`：必带的 `Fw.Core`；`fw/kit/<id>`：`app / anim / net / rec / ai / lua`。离线能力分别位于 `fw/tool/train`、`fw/tool/e2e`、`fw/csharp/FwGen` 与 `fw/templates`；FWE 是外部可选编辑器，不是 FW 内置 Kit。
 - `fw.toml`：宿主工程路径与 .NET 工程入口，只接受固定 section/key，所有路径必须位于工程根目录内。
 - `[use].game / host`：必填，按目标选择 Kit，`core` 自动加入；缺失时配置加载直接失败。
+- `[use].game_net_adapter / host_net_adapter`：可选字符串，选择 `net` 的目标默认使用 `"lite"`，设置 `"none"` 时不引用 LiteNetLib adapter，只保留 `Fw.Net` 合同供宿主自行装配 transport。两目标互不影响，未选择 `net` 时不得声明该选项。
 - `schema/systems.toml`：Godot system 与 C# core system 的统一事实源。
 - `schema/bridge/*.proto`：intent、view、event、packet 和公共值类型事实源。
 - `schema/config/*.proto`：配置结构事实源。
@@ -37,6 +38,7 @@
 - C# `SystemRuntime` 为每个 system 保留有界的 tick 耗时与当前线程分配采样；`GetTimingSnapshots` 只读导出诊断，不改变 phase、依赖、故障或确定性语义。
 - `AppRoot` 持有全局 system scope；`BaseMode` 持有以全局 scope 为 parent 的局部 scope。两端 runtime 都按 phase 和显式 dependency 做稳定拓扑排序。
 - 两端 runtime 都显式区分 created、initializing、running、faulted、stopping、stopped；失败初始化会把失败项本身也纳入逆序回滚。
+- lifecycle 按单线程串行调用；Tick 内可关闭当前 runtime，后续 system 不再推进，清理异常也不会把已完成的 stopped 改回 faulted。递归 Tick 在再次派发前拒绝；Init 内关闭会取消本次初始化，不允许恢复 running。这里不提供跨线程调度或任意嵌套生命周期修改协议。
 - `AppRoot` 的 mode 切换先清理旧 mode/UI/pool；新 mode enter 失败时再次清理半成品，离开 SceneTree 时执行最终 shutdown。
 
 ## Archive
@@ -139,12 +141,16 @@
 - bridge 只接受固定五文件；parser 先收集完整文件集，再验证 import、共享 package 和类型引用。import 禁止父目录穿越、大小写漂移与歧义匹配。
 - 支持的 proto3 子集：`syntax`、`package`、`import`、`message`、`enum`、普通字段、`repeated`、`oneof`，以及 message 内的 `reserved` 字段号/范围/名称。
 - bridge 字段支持 `string / bool / float / double / int32 / int64 / uint32 / uint64 / sint32 / sint64`、同 schema message 和 enum；其他 protobuf 标量在生成前失败。
+- C# 的 `double / uint32 / int64 / uint64` 分别保留 `double / uint / long / ulong`，scalar 与 repeated 字段使用同一数值检查；Variant 整数不先转成 int32 再写入宽整数。Godot 的有符号整数及 `uint32` 使用 `int`，`uint64` 使用规范十进制 `String`；`float / double` 分别检查有限 binary32 / binary64。手组 Godot 字典时也必须遵守这个表示合同。
+- oneof 的 typed payload 始终保留原字段类型。兼容平铺字段若合并了同名 signed64 与 uint64，则以 C# `decimal` 表达两者的精确并集，再按实际 variant 校验；这不是新的 schema 标量。Godot 数值 creator 使用 Variant 入参检查原始类型，避免引擎提前把小数截成整数。
+- 保留既有空 ID marker 约定：`PlayerId` 表示 signed64，`EntityId` 与其他 `*Id` 表示 signed32，均按对应整数完整校验。带真实字段的 `*Id` message 及 `*Id` enum 在生成前拒绝，不能把消息字段悄悄丢掉；需要结构化 ID 或枚举时使用不歧义的类型名。
 - `optional`、`map`、`service`、`option` 等未声明语法会直接报错；`reserved` 会校验字段冲突、重叠范围和非法编号。
 - parser 会拒绝未知类型、重复 message/enum、重复 field 名/编号、重复 enum 名/编号、非法 tag、proto3 enum 首项非零和未闭合 block。
 - schema 会按实际 C#/GDScript 命名规则检查生成的字段、成员、类型和 wrapper；不同声明映射到同一标识符时，在写文件前失败。
 - `fwgen bridge` 生成 Godot 统一入口、C# bridge 类型、基础 codec、intent/event/packet codec。
 - bridge schema 在一次 parse 后派生全部产物；同名 oneof payload 字段只有兼容类型才能合并，否则生成失败。
 - 基础 codec 的协议版本由解析后的五文件语义生成稳定 SHA-256 指纹并截取为正整数；注释、空白和声明顺序不改变版本，package、文件角色、类型、字段、编号、重复性、oneof 或 enum 变化会自动改变版本。
+- 包含 `double / uint32 / int64 / sint64 / uint64` 或既有 `*Id` 字段的 schema 还把数值 codec 版本加入协议指纹，旧的缩窄 codec 与新 codec 不允许假装同版本互通。升级须两端同时重新生成；未使用这些类型的 schema 保持原指纹规则。
 - 生成 DTO 保留 proto3 零值：整数为 0、bool 为 false、string/enum unspecified 为 `""`。
 - intent 表达“想做什么”，view 表达“允许看到什么”，event 表达“一次发生了什么”，packet 只做信封。
 - `Fw.Rt.Bridge.WireFrame` 是纯 C# 传输帧：`FWIR + version + flags + decoded length + payload length + SHA-256 + payload`；Brotli 只在确实缩小时启用，长度校验避免整数溢出。SHA-256 只提供损坏检测，不代替认证或加密。
@@ -161,13 +167,21 @@
 ## Config
 - `fwgen config` 从 config schema 生成 Godot config 入口、C# typed config、路径常量和 codec。
 - 宿主在 `fw.toml` 配置可选 `[gen].fwe` 后，`fwgen config` 还会生成 `_config_schema.json`，包含 schema hash、根表来源与格式、CSV 表头、字段编辑类型、嵌套 message 和 config 引用。
+- 该输出是编辑器可消费的数据合同，不是对某个编辑器进程的依赖，也不等于 FWE 已原生导入全部 FW 格式。CSV/JSON 来源与编辑模型转换由可选宿主适配器承担；fw、fwe 和自动化工具可各自使用，不应通过互相加载核心模块完成接入。
 - config 字段支持 bridge 的基础标量、空 `Fixed32` marker 和同 schema message；enum、`bytes`、`fixed*`、`sfixed*` 当前不进入生成阶段。
+- 配置的数值映射独立于 Bridge codec：C# 的 `float / double / uint32 / int32 / int64 / uint64` 分别生成 `float / double / uint / int / long / ulong`，`sint*` 使用对应有符号类型。所有数值必须有限且在声明范围内，整数不得接受小数或 bool；`float` 按 IEEE 754 binary32 舍入，`double` 保留 binary64 精度。
+- 数值原文最多 4096 个字符，包括符号、指数与首尾空白，超限拒绝而非截取。生成的 Godot 读取器保留 JSON 数值 token 的原文与数值身份，并以整数比值进行 IEEE 最近值、中点取偶舍入；不依赖 Godot 的近似十进制转换，也不通过先舍入 double 再缩成 float 处理源 `float`。这一适配只在配置加载时运行，不进入逐帧系统，不改变编辑器读源与发布读 pack 的分工。
+- C# 检查、打包与生成 codec 在浮点解析前做不丢有效数字的科学记数归一，避免 .NET 8 对超长整数系数与抵消指数组合错误归零；无需升级宿主运行时。
+- JSON 源中 `int64 / sint64 / uint64` 的数值字面量只接受 `[-9007199254740991, 9007199254740991]` 内的合法整数；完整 64 位范围必须写十进制字符串，CSV 单元格本身是文本，可直接写全范围。pack 对三种 64 位整数统一写规范十进制字符串，避免 Godot JSON 数值解析经过 binary64 时丢失精度。
+- Godot 配置中 `int32 / uint32 / int64 / sint*` 使用 `int`，`uint64` 始终使用规范十进制 `String`（零值为 `"0"`），不把超过 signed int64 的值转换成负数；`float / double / Fixed32` 使用 `float`，其中 schema `float` 的值先按 binary32 舍入。
+- C# typed config 的属性保留 `init` 装配入口，repeated 字段为防御复制后的 `IReadOnlyList<T>`，底层是不可变访问包装，调用方修改传入列表不会改变配置。嵌套 message 使用相同合同，路径列表也不泄漏可变数组。Godot 公开配置入口返回递归只读的缓存快照；无效配置不标记 loaded、不缓存部分值、不伪造默认配置，返回空结果并报告错误，宿主应在启动时拒绝继续。
+- 可选 FWE 合同把 64 位整数字段映射为 string 编辑器并标记 `valueEncoding: "decimal-integer"`；整数 `minimum/maximum` 使用十进制字符串，浮点字段标记 `finite: true`。这些是普通数据元信息，不引入 FWE 运行时依赖。
 - schema 会检查生成的 C# 字段、类型、配置路径和 GDScript parser 名；保留名或名称归一化冲突在写文件前失败。
 - `config_check` 检查 schema 与 `data/config` 的字段一致性。
 - `config_pack` 把源配置打包到 `pack/config`。
 - CSV 空白单元格按字段缺省处理；Godot 编辑器态读取源 CSV 与 `config_check / config_pack` 使用相同语义，标量回落到 proto3 零值，数组回落为空数组，配置引用回落到默认项。
 - config pack 使用 76-byte `WCFG` header，校验版本、schema SHA-256、payload length 和 payload SHA-256；纯 C# `Fw.Rt.Config.ConfigPack` 是格式实现，生成器负责调用它，生成 codec 只负责文件读取与 typed 映射。
-- 空 `message Fixed32 {}` 是 signed Q24.8 marker；pack 时乘 256 并检查 int32 范围，读取时除 256。
+- 空 `message Fixed32 {}` 是 signed Q24.8 marker；源数据在两端均乘 256、按中点远离零舍入并检查 int32 范围，读取时除 256。C# 使用 `double` 承载结果，从而精确保留整个 Q24.8 范围，包含最大值 `8388607.99609375`；它不是未量化的任意浮点配置。
 - 生成清单只把 config schema 与数据文件布局视为结构输入，普通数据值变化不会要求重生成代码。
 - 默认模板自带最小 `data/config/game.csv.txt`，生成后可立即通过 check/build。
 - 默认模板是最小但完整的 `Godot intent -> C# GameSystem -> view/event -> Godot VM` 计数器闭环，不默认塞入网络、DS 或具体世界玩法。
@@ -202,6 +216,7 @@
 - `tools/test.ps1`、`tools/test.sh` 会构建模块与生成器，运行 `FwGenTests` 与 `Fw.Verify`，并在全新临时目录验证 `new -> sync -> check -> config_pack -> build`。
 - 测试会比较规范源与模板镜像，并验证重复生成、重复打包的内容完全一致。
 - 本地存在 Godot .NET 时继续执行 headless editor 扫描、编辑器改写后的二次 check/build、runtime 故障注入、通用服务探针和主场景启动；可用 `GODOT_BIN` 显式指定可执行文件。
+- 完整脚本在生成代码测试之前解析 Godot，并让数值探针与模板探针使用同一引擎；CI 缺失 Godot 或尝试跳过时失败。Windows/Linux 编辑器验证均等待 `--import` 完成，不在资源导入完成前退出。
 - `.github/workflows/ci.yml` 使用只读仓库权限，在 Windows 与 Linux 安装固定 Godot .NET，并执行同一完整测试链；同一引用的新任务会取消旧任务，单个 job 最长运行 30 分钟。
 - `fw/Directory.Build.props` 统一 core、Kit、tool 与测试工程的 target framework，并把 C# 警告视为错误；`fw/csharp/Directory.Build.props` 只负责向生成器和验证器导入该事实源。
 - C# snapshot 冻结 `Fw.Rt.*` 的公开类型、继承关系、构造、字段、属性访问器、事件、方法和运算符；Godot snapshot 自动扫描 `fw/scripts/fw` 下全部 `class_name`，冻结直接基类、方法签名与默认值、signal、属性和常量值。

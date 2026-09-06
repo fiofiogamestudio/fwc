@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Net 默认 adapter 变为目标级可选：新增 `[use].game_net_adapter / host_net_adapter = "lite" | "none"`，默认保持 `lite`，自有 transport 可排除 LiteNetLib 引用。FW 编辑元数据仍为可选数据合同，不引入 FWE/FWA 依赖。
+- 修复 Tick 内 shutdown 的遍历失效和 stopped 状态被覆盖，拒绝递归 Tick，Init 内 shutdown 不再复活已清理 runtime；C#/Godot 配套行为回归覆盖取消、清理异常和后续派发。
+- 完整测试在生成数值探针前解析并传递 Godot，CI 禁止静默跳过；Linux 编辑器导入行为与 Windows 对齐。
+- **配置合同破坏性修正**：C# `double / uint32 / Fixed32` 分别生成 `double / uint / double`，不再缩窄或改变符号；check、pack 和生成 codec 检查数值范围及有限性。Fixed32 在 CSV/JSON/pack 两端一致执行 Q24.8 量化并保留完整精度。
+- **64 位配置迁移**：JSON 源中超过安全整数范围的 `int64 / sint64 / uint64` 必须为十进制字符串；CSV 保留完整文本范围，pack 统一写 64 位十进制字符串。Godot `uint64` 始终返回字符串，C# 保留 `ulong`；可选编辑合同为大整数选择 string 编辑器并携带无损范围元信息。
+- **配置只读迁移**：C# repeated 属性改为防御复制并冻结的 `IReadOnlyList<T>`，嵌套配置及 ConfigPath 列表不泄漏可变集合；Godot 返回递归只读快照，错误加载不缓存部分结果或伪造默认值。升级须重新生成、检查、打包并迁移宿主类型/集合调用点，不手改 `_gen`。
+- Godot 配置加载保留 JSON 数值原文并精确执行 binary32/binary64 最近值、中点取偶舍入，修复极小数归零及边界精度漂移；数值原文统一设 4096 字符预算，超限显式拒绝，不截掉有效数字。编辑器仍可直接读取源数据。
+- C# 配置读取在解析前无损规范化十进制阶，绕过 .NET 8 超长系数的错误归零；默认回归追加 512 组原始 IEEE 位模式往返，不依赖 Godot 字面量作为期望值。
+- **Bridge 数值与协议迁移**：typed payload 保留 `double / uint / long / ulong`，读写不再隐式截断，Godot `uint64` 使用规范十进制字符串。含宽数值的 schema 引入新的 codec 协议指纹，旧协议明确拒绝；发送/接收端均须重新生成和迁移，默认模板的计数事件与 tick 已配套更新。
+- Bridge 的既有 ID 别名进入统一数值校验；非空 `*Id` message 与歧义 `*Id` enum 在生成前报错，不再静默忽略真实字段。整数 marker 保留原范围，结构化类型应改名后重新生成。
+- Bridge wrapper 避免遮蔽生成入口：`BridgeView / BridgeEvent` 保留完整名称，不再缩成 `Bridge`；使用过旧短名的 GDScript 调用点需同步迁移。C# payload 的限定名称也避免合法 `System` 类型与系统命名空间冲突。
+- 新增真实生成/编译/运行的 C# 配置往返与 Godot 4.6.2 数值探针，覆盖完整整数范围、浮点有限性、Q24.8、CSV/JSON/pack 一致性、拒绝矩阵、集合别名与错误加载恢复。
 - 运行时拆为必带 `core` 与 `app / anim / net / rec / ai / lua` Kit，训练和网络故障模拟移入 tool；新增必填的 `[use].game/host`、`fw sync`、目标级 C# 引用与 Godot 投影，不再提供 `FwRuntime` 聚合程序集、类型转发或旧 Godot 路径回退。
 - 新增 `FLocalization`、标准目录 provider 与 C# `LocalizedMessage/LocalizedAsset` 语义契约，支持确定性 provider 覆盖、语言回退、命名参数、复数/选择、伪本地化、文本/资源绑定和缺失诊断。
 - 新增通用整局 AI 基础设施：游戏环境/机会节点合同、策略价值模型、固定预算 Beam 与 PUCT、训练轨迹、确定性 replay buffer、可持久化线性 policy/value 训练基线和带 Wilson 区间的批量评测。
