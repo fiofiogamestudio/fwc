@@ -58,6 +58,7 @@ public sealed class SystemRuntime
     private readonly List<Entry> _initializedEntries = [];
     private readonly List<string> _phaseOrder = [];
     private readonly List<Entry> _tickEntries = [];
+    private bool _isTicking;
     private List<Entry>? _orderedEntries;
 
     public SystemRuntime()
@@ -266,6 +267,10 @@ public sealed class SystemRuntime
                 entry.Initialized = true;
                 _initializedEntries.Add(entry);
                 entry.Init();
+                if (State != SystemRuntimeState.Initializing)
+                {
+                    throw new InvalidOperationException("System runtime initialization was cancelled by shutdown.");
+                }
             }
             State = SystemRuntimeState.Running;
         }
@@ -286,13 +291,19 @@ public sealed class SystemRuntime
         {
             throw new InvalidOperationException($"System runtime cannot tick from state {State}.");
         }
+        if (_isTicking)
+        {
+            throw new InvalidOperationException("System runtime tick cannot be reentered.");
+        }
 
+        _isTicking = true;
         try
         {
             _tickEntries.Clear();
             _tickEntries.AddRange(OrderedEntries());
-            foreach (var entry in _tickEntries)
+            for (int index = 0; index < _tickEntries.Count && IsRunning; index++)
             {
+                var entry = _tickEntries[index];
                 if (_entriesById.ContainsKey(entry.Id) && entry.Initialized)
                 {
                     long started = Stopwatch.GetTimestamp();
@@ -313,8 +324,16 @@ public sealed class SystemRuntime
         }
         catch
         {
-            State = SystemRuntimeState.Faulted;
+            if (State == SystemRuntimeState.Running)
+            {
+                State = SystemRuntimeState.Faulted;
+            }
             throw;
+        }
+        finally
+        {
+            _tickEntries.Clear();
+            _isTicking = false;
         }
     }
 

@@ -21,6 +21,7 @@ $TempBase = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) "fw tem
 $TestRoot = [IO.Path]::GetFullPath((Join-Path $TempBase ([Guid]::NewGuid().ToString("N"))))
 $FwLink = Join-Path $TestRoot "fw"
 $Succeeded = $false
+$PreviousGodotBin = $env:GODOT_BIN
 
 if (-not $TestRoot.StartsWith($TempBase + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
     throw "unsafe test root: $TestRoot"
@@ -39,6 +40,7 @@ function Assert-GodotLog {
     $Content = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
     if ($AllowFaultInjection) {
         $Content = $Content.Replace("ERROR: System 'second' init must return true; initialization failed.", "EXPECTED: system init failure")
+        $Content = $Content.Replace("ERROR: System manager tick cannot be reentered.", "EXPECTED: recursive tick rejection")
         $Content = $Content.Replace("ERROR: FUI can only open scenes whose root extends FForm.", "EXPECTED: invalid form rejection")
         $Content = $Content.Replace("ERROR: FUI form id cannot be empty.", "EXPECTED: empty form id rejection")
     }
@@ -170,6 +172,12 @@ function Get-TreeSnapshot {
 }
 
 try {
+    $Godot = if ($SkipGodot) { $null } else { Resolve-GodotDotNet }
+    if ($env:CI -eq "true" -and $null -eq $Godot) {
+        throw "CI requires Godot .NET; headless checks cannot be skipped."
+    }
+    # Generated-code tests must use the same resolved engine as the template tests.
+    [Environment]::SetEnvironmentVariable("GODOT_BIN", $Godot, "Process")
     foreach ($Pair in @(
         @{ Source = "docs\rule.md"; Mirror = "templates\fw_new\default\docs\fw\rule.md.tpl" },
         @{ Source = "docs\spec.md"; Mirror = "templates\fw_new\default\docs\fw\spec.md.tpl" },
@@ -264,7 +272,6 @@ try {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     if (-not $SkipGodot) {
-        $Godot = Resolve-GodotDotNet
         if ($null -ne $Godot) {
             & dotnet build (Join-Path $TestRoot "fw_audit.csproj") -c Debug
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -334,6 +341,7 @@ try {
     $Succeeded = $true
 }
 finally {
+    [Environment]::SetEnvironmentVariable("GODOT_BIN", $PreviousGodotBin, "Process")
     if (-not $Succeeded -and (Test-Path -LiteralPath $TestRoot)) {
         foreach ($Log in Get-ChildItem -LiteralPath $TestRoot -Filter "godot_*.log" -File -ErrorAction SilentlyContinue) {
             Write-Host "--- $($Log.Name) ---"

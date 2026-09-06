@@ -88,6 +88,27 @@ class SystemProbe:
 		calls.append("shutdown:%s" % id)
 
 
+class RuntimeCallbackProbe:
+	extends RefCounted
+
+	var on_init: Callable
+	var on_tick: Callable
+	var on_shutdown: Callable
+
+	func init(_context: Variant) -> bool:
+		if on_init.is_valid():
+			on_init.call()
+		return true
+
+	func tick(_dt: float) -> void:
+		if on_tick.is_valid():
+			on_tick.call()
+
+	func shutdown() -> void:
+		if on_shutdown.is_valid():
+			on_shutdown.call()
+
+
 class ModeProbe:
 	extends RefCounted
 
@@ -126,6 +147,7 @@ func _run() -> void:
 	_test_skeleton_appearance()
 	_test_ui_stack()
 	_test_system_rollback()
+	_test_system_reentrancy()
 	_test_mode_rollback()
 	if _failures.is_empty():
 		print("fw Godot runtime tests passed.")
@@ -1265,6 +1287,51 @@ func _test_system_rollback() -> void:
 		"manager must roll back attempted systems in reverse order"
 	)
 	manager.shutdown_all()
+
+
+func _test_system_reentrancy() -> void:
+	var calls: Array[String] = []
+	var manager: Variant = SystemManagerScript.new()
+	var control := RuntimeCallbackProbe.new()
+	control.on_tick = func() -> void:
+		calls.append("tick:first")
+		manager.shutdown_all()
+	control.on_shutdown = func() -> void: calls.append("shutdown:first")
+	manager.add_system(&"first", control)
+	manager.add_system(&"second", SystemProbe.new(calls, "second", true))
+	_check(manager.init_all(), "shutdown tick fixture initializes")
+	calls.clear()
+	manager.tick(0.1)
+	_check(",".join(calls) == "tick:first,shutdown:second,shutdown:first", "shutdown inside tick stops later dispatch")
+	_check(manager.lifecycle_state() == SystemManagerScript.LifecycleState.STOPPED, "tick shutdown remains stopped")
+	manager.shutdown_all()
+	control.on_tick = Callable()
+
+	var cancelled: Variant = SystemManagerScript.new()
+	var cancel_probe := RuntimeCallbackProbe.new()
+	cancel_probe.on_init = func() -> void: cancelled.shutdown_all()
+	cancelled.add_system(&"cancel", cancel_probe)
+	_check(not cancelled.init_all(), "shutdown inside init cancels initialization")
+	_check(cancelled.lifecycle_state() == SystemManagerScript.LifecycleState.STOPPED, "cancelled init must not resume running")
+	_check(cancelled.snapshots().is_empty(), "cancelled init clears registrations")
+	cancel_probe.on_init = Callable()
+
+	var nested: Variant = SystemManagerScript.new()
+	var recursive := RuntimeCallbackProbe.new()
+	var tick_count := [0]
+	recursive.on_tick = func() -> void:
+		tick_count[0] += 1
+		if tick_count[0] == 1:
+			nested.tick(0.1)
+	nested.add_system(&"recursive", recursive)
+	_check(nested.init_all(), "nested tick fixture initializes")
+	nested.tick(0.1)
+	_check(tick_count[0] == 1, "nested tick cannot recursively dispatch callbacks")
+	_check(nested.last_error() == "System manager tick cannot be reentered.", "nested tick reports precise diagnostic")
+	nested.tick(0.1)
+	_check(tick_count[0] == 2 and nested.is_running(), "subsequent outer tick remains usable")
+	nested.shutdown_all()
+	recursive.on_tick = Callable()
 
 
 func _test_mode_rollback() -> void:

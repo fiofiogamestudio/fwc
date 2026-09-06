@@ -24,6 +24,10 @@ static class RuntimeTests
         new("system init rollback", TestSystemInitRollback),
         new("system tick fault cleanup", TestSystemTickFaultCleanup),
         new("system shutdown continues", TestSystemShutdownContinues),
+        new("system tick can shut down without resurrecting fault state", TestSystemShutdownDuringTick),
+        new("system rejects nested tick before dispatch", TestSystemNestedTick),
+        new("system initialization cannot resume after shutdown", TestSystemShutdownDuringInit),
+        new("system removal during tick skips removed entries", TestSystemRemovalDuringTick),
     ];
 
     private static void TestGenerationLock()
@@ -621,6 +625,87 @@ static class RuntimeTests
         Throws(runtime.ShutdownAll, "failed to shut down");
         Equal(SystemRuntimeState.Stopped, runtime.State, "runtime state after shutdown error");
         Equal("init:first,init:second,shutdown:second,shutdown:first", string.Join(',', calls), "shutdown order");
+        runtime.ShutdownAll();
+    }
+
+    private static void TestSystemShutdownDuringTick()
+    {
+        foreach (bool failShutdown in new[] { false, true })
+        {
+            var runtime = new SystemRuntime();
+            var calls = new List<string>();
+            runtime.Add("first", new ProbeSystem(() => { }, () => calls.Add("shutdown:first"), _ =>
+            {
+                calls.Add("tick:first");
+                runtime.ShutdownAll();
+            }), new object());
+            runtime.Add("second", new ProbeSystem(() => { }, () =>
+            {
+                calls.Add("shutdown:second");
+                if (failShutdown) throw new InvalidOperationException("expected shutdown failure");
+            }, _ => calls.Add("tick:second")), new object());
+            runtime.InitAll();
+            if (failShutdown) Throws(() => runtime.Tick(0.1f), "failed to shut down");
+            else runtime.Tick(0.1f);
+            Equal(SystemRuntimeState.Stopped, runtime.State, "shutdown during tick remains stopped");
+            Equal("tick:first,shutdown:second,shutdown:first", string.Join(',', calls), "no tick after shutdown");
+            runtime.ShutdownAll();
+            Equal(0, runtime.GetSnapshots().Count, "shutdown clears registration");
+        }
+    }
+
+    private static void TestSystemNestedTick()
+    {
+        var runtime = new SystemRuntime();
+        int ticks = 0;
+        bool inCallback = false;
+        runtime.Add("recursive", new ProbeSystem(() => { }, () => { }, _ =>
+        {
+            if (inCallback) throw new InvalidOperationException("nested callback was dispatched");
+            ticks++;
+            // A caught nested call must not corrupt the outer dispatch or its cached entries.
+            inCallback = true;
+            try { Throws(() => runtime.Tick(0.1f), "reentered"); }
+            finally { inCallback = false; }
+        }), new object());
+        runtime.InitAll();
+        runtime.Tick(0.1f);
+        runtime.Tick(0.1f);
+        Equal(2, ticks, "one callback per outer tick");
+        Equal(SystemRuntimeState.Running, runtime.State, "caught nested tick preserves running state");
+        runtime.ShutdownAll();
+    }
+
+    private static void TestSystemShutdownDuringInit()
+    {
+        var runtime = new SystemRuntime();
+        var calls = new List<string>();
+        runtime.Add("cancel", new ProbeSystem(() =>
+        {
+            calls.Add("init:cancel");
+            runtime.ShutdownAll();
+        }, () => calls.Add("shutdown:cancel")), new object());
+        runtime.Add("later", new ProbeSystem(() => calls.Add("init:later"), () => calls.Add("shutdown:later")), new object());
+        Throws(runtime.InitAll, "initialization failed");
+        Equal(SystemRuntimeState.Stopped, runtime.State, "cancelled initialization remains stopped");
+        Equal("init:cancel,shutdown:cancel", string.Join(',', calls), "cancelled initialization cleans only attempted entries");
+        Equal(0, runtime.GetSnapshots().Count, "cancelled initialization clears registrations");
+    }
+
+    private static void TestSystemRemovalDuringTick()
+    {
+        var runtime = new SystemRuntime();
+        var calls = new List<string>();
+        runtime.Add("first", new ProbeSystem(() => { }, () => calls.Add("shutdown:first"), _ =>
+        {
+            calls.Add("tick:first");
+            runtime.Remove("later");
+        }), new object());
+        runtime.Add("later", new ProbeSystem(() => { }, () => calls.Add("shutdown:later"), _ => calls.Add("tick:later")), new object());
+        runtime.InitAll();
+        runtime.Tick(0.1f);
+        Equal("tick:first,shutdown:later", string.Join(',', calls), "removed system does not tick");
+        Equal(SystemRuntimeState.Running, runtime.State, "removal preserves runtime");
         runtime.ShutdownAll();
     }
 

@@ -22,6 +22,7 @@ var _ordered_cache: Array[Dictionary] = []
 var _order_dirty := true
 var _state: LifecycleState = LifecycleState.CREATED
 var _last_error := ""
+var _is_ticking := false
 
 
 func _init(parent: Variant = null) -> void:
@@ -258,6 +259,9 @@ func init_all() -> bool:
 		var system = entry.get("system", null)
 		if system != null and system.has_method("init"):
 			var result: Variant = system.init(entry.get("context", null))
+			if _state != LifecycleState.INITIALIZING:
+				_last_error = "System manager initialization was cancelled by shutdown."
+				return false
 			if not (result is bool) or not result:
 				_fail("System '%s' init must return true; initialization failed." % entry.get("id", &""))
 				_state = LifecycleState.FAULTED
@@ -272,14 +276,21 @@ func init_all() -> bool:
 func tick(dt: float) -> void:
 	if _state != LifecycleState.RUNNING:
 		return
+	if _is_ticking:
+		_fail("System manager tick cannot be reentered.")
+		return
+	_is_ticking = true
 	var snapshot := _ordered_entries().duplicate()
 	for entry in snapshot:
+		if _state != LifecycleState.RUNNING:
+			break
 		var id: StringName = entry.get("id", &"")
 		if not _entries_by_id.has(id) or not bool(entry.get("initialized", false)):
 			continue
 		var system = entry.get("system", null)
 		if system != null and system.has_method("tick"):
 			system.tick(dt)
+	_is_ticking = false
 
 
 func shutdown_all() -> void:

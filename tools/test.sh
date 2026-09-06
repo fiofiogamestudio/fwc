@@ -32,8 +32,33 @@ for pair in \
   }
 done
 
+GODOT_DOTNET=""
+godot_candidates=()
+for variable in GODOT_BIN GODOT GODOT4; do
+  if [[ -n "${!variable:-}" ]]; then
+    godot_candidates+=("${!variable}")
+  fi
+done
+for candidate in godot_mono godot4_mono godot_console godot godot4; do
+  if command -v "${candidate}" >/dev/null 2>&1; then
+    godot_candidates+=("$(command -v "${candidate}")")
+  fi
+done
+for candidate in "${godot_candidates[@]}"; do
+  [[ -f "${candidate}" || -L "${candidate}" ]] || continue
+  resolved="$(readlink -f "${candidate}")"
+  if [[ -x "${resolved}" ]] && { [[ "$(basename "${resolved}")" =~ [Mm][Oo][Nn][Oo] ]] || [[ -d "$(dirname "${resolved}")/GodotSharp" ]]; }; then
+    GODOT_DOTNET="${resolved}"
+    break
+  fi
+done
+if [[ "${CI:-}" == "true" && -z "${GODOT_DOTNET}" ]]; then
+  echo "CI requires Godot .NET; headless checks cannot be skipped." >&2
+  exit 1
+fi
+
 dotnet build "${FW_ROOT}/csharp/FwGen/FwGen.csproj" -c Release
-dotnet run --project "${FW_ROOT}/csharp/FwGenTests/FwGenTests.csproj" -c Release
+GODOT_BIN="${GODOT_DOTNET}" dotnet run --project "${FW_ROOT}/csharp/FwGenTests/FwGenTests.csproj" -c Release
 dotnet run --project "${FW_ROOT}/csharp/Fw.Verify/Fw.Verify.csproj" -c Release
 
 mkdir -p "${TEST_ROOT}/fw"
@@ -87,30 +112,9 @@ pack_after="$(cd "${TEST_ROOT}" && find pack/config -type f -print0 | sort -z | 
 dotnet build "${TEST_ROOT}/fw_audit.csproj" -c Release
 dotnet build "${TEST_ROOT}/host_audit.csproj" -c Release
 
-GODOT_DOTNET=""
-godot_candidates=()
-for variable in GODOT_BIN GODOT GODOT4; do
-  if [[ -n "${!variable:-}" ]]; then
-    godot_candidates+=("${!variable}")
-  fi
-done
-for candidate in godot_mono godot4_mono godot_console godot godot4; do
-  if command -v "${candidate}" >/dev/null 2>&1; then
-    godot_candidates+=("$(command -v "${candidate}")")
-  fi
-done
-for candidate in "${godot_candidates[@]}"; do
-  [[ -f "${candidate}" || -L "${candidate}" ]] || continue
-  resolved="$(readlink -f "${candidate}")"
-  if [[ "$(basename "${resolved}")" =~ [Mm][Oo][Nn][Oo] ]] || [[ -d "$(dirname "${resolved}")/GodotSharp" ]]; then
-    GODOT_DOTNET="${resolved}"
-    break
-  fi
-done
-
 if [[ -n "${GODOT_DOTNET}" && -x "${GODOT_DOTNET}" ]]; then
   dotnet build "${TEST_ROOT}/fw_audit.csproj" -c Debug
-  timeout "${GODOT_EDITOR_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --editor --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_editor.log" --quit
+  timeout "${GODOT_EDITOR_TIMEOUT_SECONDS}s" "${GODOT_DOTNET}" --headless --path "${TEST_ROOT}" --log-file "${TEST_ROOT}/godot_editor.log" --import
   dotnet run --project "${GENERATOR}" -c Release -- --root "${TEST_ROOT}" check
   dotnet build "${TEST_ROOT}/fw_audit.csproj" -c Debug
   mkdir -p "${TEST_ROOT}/scripts/_fw_probe"
@@ -127,6 +131,7 @@ if [[ -n "${GODOT_DOTNET}" && -x "${GODOT_DOTNET}" ]]; then
     "${TEST_ROOT}/godot_editor.log" "${TEST_ROOT}/godot_services.log" "${TEST_ROOT}/godot_game.log"
   ! sed \
     -e "/^ERROR: System 'second' init must return true; initialization failed\.$/d" \
+    -e '/^ERROR: System manager tick cannot be reentered\.$/d' \
     -e '/^ERROR: FUI can only open scenes whose root extends FForm\.$/d' \
     -e '/^ERROR: FUI form id cannot be empty\.$/d' \
     "${TEST_ROOT}/godot_runtime.log" \
