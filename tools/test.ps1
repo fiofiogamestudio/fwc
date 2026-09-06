@@ -1,5 +1,6 @@
 param(
-    [switch]$SkipGodot
+    [switch]$SkipGodot,
+    [string]$FrameworkPath = "fwc"
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,7 +20,13 @@ if ($GodotEditorTimeoutSeconds -le 0 -or $GodotRunTimeoutSeconds -le 0) {
 $FwRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $TempBase = [IO.Path]::GetFullPath((Join-Path ([IO.Path]::GetTempPath()) "fw template tests"))
 $TestRoot = [IO.Path]::GetFullPath((Join-Path $TempBase ([Guid]::NewGuid().ToString("N"))))
-$FwLink = Join-Path $TestRoot "fw"
+$FrameworkPath = $FrameworkPath.Replace('\', '/')
+foreach ($Part in $FrameworkPath.Split('/')) {
+    if ($Part -in @('', '.', '..') -or $Part -notmatch '\A[A-Za-z0-9_. -]+\z' -or $Part.EndsWith(' ') -or $Part.EndsWith('.')) {
+        throw 'FrameworkPath must be a project-relative path without traversal or shell metacharacters.'
+    }
+}
+$FwLink = Join-Path $TestRoot $FrameworkPath
 $Succeeded = $false
 $PreviousGodotBin = $env:GODOT_BIN
 
@@ -213,7 +220,7 @@ try {
         Sort-Object { $_.FullName.Length } -Descending |
         Remove-Item -Recurse -Force
     $Generator = Join-Path $FwRoot "csharp\FwGen\FwGen.csproj"
-    & dotnet run --project $Generator -c Release -- --root $TestRoot craft fw-new --name fw_audit
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $FwRoot 'tools/new.ps1') -ProjectRoot $TestRoot -Name fw_audit -FrameworkPath $FrameworkPath -GeneratorProject $Generator
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     if (Test-Path -LiteralPath (Join-Path $TestRoot ".codex\skills")) {
         throw "The default FWC template must not install agent skills; FWS is optional and separate."
@@ -230,7 +237,7 @@ try {
         "scripts\_gen",
         "scripts\_fw",
         "csharp\_gen",
-        "fw\scripts\.gdignore"
+        "$FrameworkPath/scripts/.gdignore"
     )
     foreach ($Command in @("sync", "system", "bridge", "config")) {
         & dotnet run --project $Generator -c Release -- --root $TestRoot $Command
@@ -240,7 +247,7 @@ try {
         "scripts\_gen",
         "scripts\_fw",
         "csharp\_gen",
-        "fw\scripts\.gdignore"
+        "$FrameworkPath/scripts/.gdignore"
     )
     if ($GeneratedBefore -ne $GeneratedAfter) {
         throw "repeated generation is not deterministic."
@@ -299,15 +306,15 @@ try {
             $Utf8NoBom = [Text.UTF8Encoding]::new($false)
             [IO.File]::WriteAllText(
                 $RuntimeProbe,
-                [IO.File]::ReadAllText((Join-Path $TestRoot "fw\tests\runtime_test.gd"), [Text.Encoding]::UTF8).Replace(
+                [IO.File]::ReadAllText((Join-Path $FwLink "tests\runtime_test.gd"), [Text.Encoding]::UTF8).Replace(
                     "res://fw/scripts/fw",
                     "res://scripts/_fw/fw"
-                ),
+                ).Replace("res://fw/tests/", "res://$FrameworkPath/tests/"),
                 $Utf8NoBom
             )
             [IO.File]::WriteAllText(
                 $ServicesProbe,
-                [IO.File]::ReadAllText((Join-Path $TestRoot "fw\tools\verify_runtime.gd"), [Text.Encoding]::UTF8).Replace(
+                [IO.File]::ReadAllText((Join-Path $FwLink "tools\verify_runtime.gd"), [Text.Encoding]::UTF8).Replace(
                     "res://fw/scripts/fw",
                     "res://scripts/_fw/fw"
                 ).Replace("res:fw/scripts/fw", "res:scripts/_fw/fw"),
@@ -327,6 +334,8 @@ try {
                 -Label "Godot services check" `
                 -TimeoutSeconds $GodotRunTimeoutSeconds
             Assert-GodotLog -Path $ServicesLog -Label "Godot services check"
+            & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $FwLink 'tools/verify_runtime.ps1') -ProjectRoot $TestRoot
+            if ($LASTEXITCODE -ne 0) { throw 'The installed runtime verification entrypoint failed.' }
             $GameLog = Join-Path $TestRoot "godot_game.log"
             Invoke-Godot `
                 -Executable $Godot `

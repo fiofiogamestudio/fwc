@@ -77,7 +77,7 @@ if [[ -z "${GENERATOR_PROJECT}" ]]; then
   if [[ -n "${CONFIGURED_GENERATOR_PROJECT}" ]]; then
     GENERATOR_PROJECT="${PROJECT_ROOT}/${CONFIGURED_GENERATOR_PROJECT}"
   else
-    GENERATOR_PROJECT="${PROJECT_ROOT}/fw/csharp/FwGen/FwGen.csproj"
+    GENERATOR_PROJECT="${PROJECT_ROOT}/fwc/csharp/FwGen/FwGen.csproj"
   fi
 fi
 

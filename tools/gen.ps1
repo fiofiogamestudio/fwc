@@ -55,7 +55,7 @@ $ResolvedProjectRoot = if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
 $ConfiguredGeneratorProject = Get-FwTomlValue -ProjectRoot $ResolvedProjectRoot -Section "dotnet" -Key "fwgen"
 $ResolvedGeneratorProject = if ([string]::IsNullOrWhiteSpace($GeneratorProject)) {
     if ([string]::IsNullOrWhiteSpace($ConfiguredGeneratorProject)) {
-        Join-Path $ResolvedProjectRoot "fw\csharp\FwGen\FwGen.csproj"
+        Join-Path $ResolvedProjectRoot "fwc\csharp\FwGen\FwGen.csproj"
     } else {
         Join-Path $ResolvedProjectRoot $ConfiguredGeneratorProject
     }

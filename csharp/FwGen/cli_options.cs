@@ -2,6 +2,7 @@ sealed class CliOptions
 {
     public string Root { get; private set; } = Directory.GetCurrentDirectory();
     public string Name { get; private set; } = "";
+    public string FrameworkPath { get; private set; } = FrameworkPaths.Default;
     public bool Force { get; private set; }
     public List<string> Command { get; } = [];
 
@@ -18,6 +19,9 @@ sealed class CliOptions
                     break;
                 case "--name":
                     options.Name = RequireValue(args, ref i);
+                    break;
+                case "--framework-path":
+                    options.FrameworkPath = FrameworkPaths.ValidateRelative(RequireValue(args, ref i));
                     break;
                 case "--force":
                     options.Force = true;

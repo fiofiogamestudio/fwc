@@ -1,12 +1,14 @@
 # FWC Use
 
 ## 接入
-- 代码仓库是 `https://github.com/fiofiogamestudio/fwc.git`；在已有 Git 游戏工程中用 `git submodule add https://github.com/fiofiogamestudio/fwc.git fw` 接入。
-- FWC 是仓库品牌；宿主 `fw/`、`fw.toml`、`Fw.*` 命名空间、生成协议及 `fw`/`fwgen` 命令继续兼容，不随仓库更名修改。
-- 前提：工程根目录已有 `project.godot`，并把 `fw/` 放在根目录。
+- 代码仓库是 `https://github.com/fiofiogamestudio/fwc.git`；在已有 Git 游戏工程中用 `git submodule add https://github.com/fiofiogamestudio/fwc.git fwc` 接入，也可由顶层 FW 初始化。
+- 新工程默认安装在 `fwc/`；`fw.toml`、`Fw.*`、生成协议与 `scripts/_fw/fw` 保持原合同，不随安装位置改名。
+- 前提：在工程内安装 FWC；默认脚本以组件父目录为工程根，嵌套安装需显式提供 `-ProjectRoot` / `--project-root`。
 - 空目录也可由默认模板创建最小 `project.godot`；已有文件默认不会覆盖。
-- 初始化：`powershell -ExecutionPolicy Bypass -File fw/tools/new.ps1 -ProjectRoot . -Name MyGame`。
-- Linux/macOS：`bash fw/tools/new.sh --project-root . --name MyGame`。
+- 初始化：`powershell -ExecutionPolicy Bypass -File fwc/tools/new.ps1 -ProjectRoot . -Name MyGame`。
+- Linux/macOS：`bash fwc/tools/new.sh --project-root . --name MyGame`。
+- 非默认安装：`new.ps1 -ProjectRoot . -FrameworkPath "modules/code kit" -Name MyGame`；Unix 对应 `--framework-path "modules/code kit"`。先把 FWC 安装到该路径，脚本不会重复拉取框架。
+- 路径只接受字母、数字、空格、`_`、`-`、`.` 和目录分隔符；拒绝 `..`、绝对路径、尾空格/点和 shell 元字符。模板及 `justfile` 自动写入实际路径；后续生成从 `[dotnet].fwgen` 定位，不猜测同名目录。
 - 项目名必须以字母开头，只使用字母、数字和下划线；C# namespace 会自动转换成 PascalCase。
 - `fw.toml` 只写模板列出的 section/key，路径使用工程根目录内的相对路径；未知字段、重复字段、空值或 `../` 越界路径会直接失败。
 - `new` 会生成 system/bridge/config，随后运行配置检查和整体检查；失败不会报告创建成功。
@@ -20,22 +22,22 @@
 
 ## Kit
 - `app` 是 Godot 应用壳与通用服务，`anim` 是动作/Rig，`net` 是联机，`rec` 是帧归档，`ai` 是运行时决策，`lua` 是可选脚本沙箱。
-- 修改 `[use]` 或更新 fw commit 后先运行 `fw/tools/sync.ps1`；Unix 使用 `bash fw/tools/sync.sh`。
+- 修改 `[use]` 或更新 fw commit 后先运行 `fwc/tools/sync.ps1`；Unix 使用 `bash fwc/tools/sync.sh`。
 - game C# 工程导入 `csharp/_gen/_fw_game.props`；声明 `[dotnet].host` 的纯 C# 工程导入 `_fw_host.props`。
 - `scripts/_fw`、两个 `_fw_*.props` 和框架脚本根的 `.gdignore` 都由 `sync` 管理，不手改。禁用 Kit 后再次同步会清理旧投影和引用。
 - `[use].game` 与 `[use].host` 均为必填；C# 必须导入对应 props，Godot 只使用 `res://scripts/_fw/fw`，框架不提供旧程序集或旧路径回退。
 - 自己实现 `INetTransport` 时，在 `[use]` 为选中 `net` 的目标增加 `game_net_adapter = "none"` 或 `host_net_adapter = "none"`，再运行 `sync`。默认值 `"lite"` 保留已有项目行为；`"none"` 只删除默认 adapter 的引用，不自动创建替代 transport，也不影响另一个目标。
 
 ## 日常命令
-- 同步 Kit：`fw/tools/sync.ps1`。
-- 生成 system：`fw/tools/gen.ps1 system`。
-- 生成 bridge：`fw/tools/gen.ps1 bridge`。
-- 生成 config：`fw/tools/gen.ps1 config`。
-- 检查配置：`fw/tools/gen.ps1 config_check`。
-- 打包配置：`fw/tools/gen.ps1 config_pack`。
-- 检查工程：`fw/tools/check.ps1`。
-- 完整构建：`fw/tools/build.ps1`。
-- 完整测试：`fw/tools/test.ps1`。
+- 同步 Kit：`fwc/tools/sync.ps1`。
+- 生成 system：`fwc/tools/gen.ps1 system`。
+- 生成 bridge：`fwc/tools/gen.ps1 bridge`。
+- 生成 config：`fwc/tools/gen.ps1 config`。
+- 检查配置：`fwc/tools/gen.ps1 config_check`。
+- 打包配置：`fwc/tools/gen.ps1 config_pack`。
+- 检查工程：`fwc/tools/check.ps1`。
+- 完整构建：`fwc/tools/build.ps1`。
+- 完整测试：`fwc/tools/test.ps1`。
 - Unix 使用同名 `.sh` 脚本；Windows/Unix 默认 build 流程一致。
 - `sync / system / bridge / config / config_pack` 都按批次提交；命令中途失败时保留调用前的完整产物与 manifest，不需要手工修补 `_gen` 或 `_fw`。
 - `config_pack` 会删除已不再对应当前 config root 的旧 `.bin`，`pack/config` 不应存放手写文件。
@@ -44,14 +46,14 @@
 1. 修改 `schema/systems.toml`。
 2. Godot system 声明 phase、script、context 和 context refs。
 3. C# core system 声明 phase 和 type。
-4. 运行 `fw/tools/gen.ps1 system`。
+4. 运行 `fwc/tools/gen.ps1 system`。
 5. 不手改 `_godot_systems.gd` 或 `_core_systems.cs`。
 6. lifecycle 串行调用，不递归 Tick。Tick 内关闭后本帧不再推进剩余 system；Init 内关闭表示取消初始化，检查返回值/异常与 stopped 状态。不要在已经关闭的 runtime 上继续运行。
 
 ## 修改 Bridge
 1. 按语义修改 `schema/bridge/value.proto`、`intent.proto`、`view.proto`、`event.proto` 或 `packet.proto`。
-2. 只使用 `fw/docs/spec.md` 声明的 proto3 子集。
-3. 运行 `fw/tools/gen.ps1 bridge`。
+2. 只使用 `fwc/docs/spec.md` 声明的 proto3 子集。
+3. 运行 `fwc/tools/gen.ps1 bridge`。
 4. 任意未知语法或重复字段都会阻止生成，先修 schema，不绕过 parser。
 5. 五个 proto 必须保留固定语义与共享 package；不要新建第六类 bridge proto。
 6. 宽数值 codec 升级后，重新生成并构建发送端与接收端；使用受影响标量的旧 packet 协议会被拒绝。迁移 C# `uint32` 到 `uint`、`double` 到 `double`、`uint64` 到 `ulong`；不要以强制降位转换掩盖编译错误。
@@ -187,25 +189,26 @@ Lua 只在玩法确实需要文本脚本时启用，不是可视 AI 图的组成
 - `LogBuffer` 会复制结构化 data 的字典层，调用方可继续修改原字典；字典内对象仍由调用方负责不可变性或深拷贝，`ForwardTo` 不允许形成 buffer 转发环。
 
 ## 验证
-- 最小验证：`fw/tools/check.ps1`。
-- 提交前验证：`fw/tools/test.ps1`。
-- 通用运行时扩展验证：`fw/tools/verify_runtime.ps1 -ProjectRoot .`；完整测试已经自动执行同一 C#/Godot 探针。
+- 最小验证：`fwc/tools/check.ps1`。
+- 提交前验证：`fwc/tools/test.ps1`。
+- 通用运行时扩展验证：`fwc/tools/verify_runtime.ps1 -ProjectRoot .`；完整测试已经自动执行同一 C#/Godot 探针。
 - 测试会创建并清理临时项目，不写入宿主工程。
 - 本机安装 Godot .NET 时，测试会额外执行 headless 脚本扫描和主场景启动；可用 `GODOT_BIN` 指定版本，或用 `-SkipGodot` 跳过。
 - 冷缓存较慢时可用 `FW_GODOT_EDITOR_TIMEOUT_SECONDS` 和 `FW_GODOT_RUN_TIMEOUT_SECONDS` 调整 headless 超时；默认分别为 90 秒和 30 秒。
 - 正式提交不应使用 `-SkipGodot`；该参数只用于明确缺少 Godot 的临时环境。
+- 路径矩阵：`tools/test.ps1 -FrameworkPath "modules/code kit"`；Unix 用 `FW_TEST_FRAMEWORK_PATH="modules/code kit" bash tools/test.sh`。不提供时默认测试 `fwc`；两种位置都在 CI 执行生成、构建和 Godot 验证。
 - 公共 API snapshot 变化默认直接失败。只有确认该变化符合 SemVer 和迁移要求后，框架维护者才可临时设置 `FW_UPDATE_API=1`，分别运行 FwGenTests 与 Godot runtime test 更新基线；随后必须取消变量、审阅 diff 并重新完整测试。
 
 ## 升级
-1. 保持宿主工作区可区分，记录当前 `fw` submodule commit。
-2. 把 `fw` 切换到目标 SemVer tag 或明确 commit，不直接依赖远端浮动分支。
+1. 保持宿主工作区可区分，记录当前 `fwc` submodule commit。
+2. 把 `fwc` 切换到目标 SemVer tag 或明确 commit，不直接依赖远端浮动分支。
 3. 依次运行 system、bridge、config 生成和 `config_check`，再运行 `check`、`build`、`test`。
 4. 审阅公共 API、schema 合同和生成产物差异；按 `CHANGELOG.md` 完成必要迁移。
-5. 验证通过后，在同一宿主变更中提交 `fw` 指针和对应生成产物，避免其他电脑检出不一致组合。
+5. 验证通过后，在同一宿主变更中提交 `fwc` 指针和对应生成产物，避免其他电脑检出不一致组合。
 6. 任一步失败时先恢复旧 submodule commit，不手改 `_gen` 产物绕过检查。
 
 ## Hook
-- 框架维护者可显式启用：`git -C fw config core.hooksPath hooks`。
+- 框架维护者可显式启用：`git -C fwc config core.hooksPath hooks`。
 - hook 只同步 FWC 自己的 `docs/rule.md`、`docs/spec.md`、`docs/use.md` 到默认模板的 `docs/fw/`，不读取或镜像 FWS 技能。
 - 若同步产生差异，提交会停止；检查并暂存派生文件后再次提交。
 - 普通 `new/gen/build` 不会修改 Git hook 配置。

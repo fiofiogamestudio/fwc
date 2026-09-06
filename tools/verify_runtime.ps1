@@ -10,6 +10,11 @@ $ResolvedProjectRoot = if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
 } else {
     (Resolve-Path $ProjectRoot).Path
 }
+$ProjectPrefix = $ResolvedProjectRoot.TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+if (-not $FwRoot.StartsWith($ProjectPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'The runtime probe must be installed inside the specified project root.'
+}
+$ProbeResource = 'res://' + $FwRoot.Substring($ProjectPrefix.Length).Replace('\', '/') + '/tools/verify_runtime.gd'
 
 & dotnet run --project (Join-Path $FwRoot "csharp/Fw.Verify/Fw.Verify.csproj")
 if ($LASTEXITCODE -ne 0) {
@@ -22,10 +27,10 @@ $StdErrPath = Join-Path ([IO.Path]::GetTempPath()) ("fw-runtime-{0}.err" -f [Gui
 $PreviousMarker = $env:FW_RUNTIME_VERIFY_MARKER
 $env:FW_RUNTIME_VERIFY_MARKER = $MarkerPath
 try {
-    $GodotCommand = (Get-Command godot -ErrorAction Stop).Source
+    $GodotCommand = if ($env:GODOT_BIN) { $env:GODOT_BIN } else { (Get-Command godot -ErrorAction Stop).Source }
     $GodotProcess = Start-Process `
         -FilePath $GodotCommand `
-        -ArgumentList @("--headless", "--path", $ResolvedProjectRoot, "--script", "res://fw/tools/verify_runtime.gd") `
+        -ArgumentList @('--headless', '--path', ('"' + $ResolvedProjectRoot + '"'), '--script', ('"' + $ProbeResource + '"')) `
         -RedirectStandardOutput $StdOutPath `
         -RedirectStandardError $StdErrPath `
         -WindowStyle Hidden `

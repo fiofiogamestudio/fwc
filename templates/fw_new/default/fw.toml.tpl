@@ -26,4 +26,4 @@ host = ["anim", "net", "rec", "ai"]
 
 [dotnet]
 game = "__PROJECT_NAME__.csproj"
-fwgen = "fw/csharp/FwGen/FwGen.csproj"
+fwgen = "__FW_PATH__/csharp/FwGen/FwGen.csproj"

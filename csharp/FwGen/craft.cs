@@ -12,13 +12,15 @@ static class Craft
 
         var name = string.IsNullOrWhiteSpace(options.Name) ? config.Value("project", "name", "Game") : options.Name;
         ValidateProjectName(name);
-        var templateRoot = Path.Combine(root, "fw", "templates", "fw_new", "default");
+        var frameworkPath = FrameworkPaths.ValidateRelative(options.FrameworkPath);
+        var frameworkRoot = FrameworkPaths.ForScaffold(root, frameworkPath);
+        var templateRoot = Path.Combine(frameworkRoot, "templates", "fw_new", "default");
         if (!Directory.Exists(templateRoot))
         {
             throw new DirectoryNotFoundException($"template not found: {templateRoot}");
         }
 
-        CopyTemplate(templateRoot, root, name, options.Force);
+        CopyTemplate(templateRoot, root, name, frameworkPath, options.Force);
         var nextConfig = FwConfig.Load(root);
         var systemSchema = SystemSchemaParser.Parse(root, nextConfig.SystemsSchemaPath(root));
         SystemGen.Generate(root, nextConfig, systemSchema);
@@ -30,7 +32,7 @@ static class Craft
         Console.WriteLine($"created fw project scaffold: {root}");
     }
 
-    private static void CopyTemplate(string templateRoot, string outputRoot, string projectName, bool force)
+    private static void CopyTemplate(string templateRoot, string outputRoot, string projectName, string frameworkPath, bool force)
     {
         var fullOutputRoot = Path.GetFullPath(outputRoot);
         var outputPrefix = fullOutputRoot + Path.DirectorySeparatorChar;
@@ -63,6 +65,7 @@ static class Craft
                 .Replace("__PROJECT_NAMESPACE__", projectNamespace, StringComparison.Ordinal)
                 .Replace("__PROJECT_NAME_PASCAL__", projectNamespace, StringComparison.Ordinal)
                 .Replace("__PROJECT_NAME__", projectName, StringComparison.Ordinal)
+                .Replace("__FW_PATH__", frameworkPath, StringComparison.Ordinal)
                 .Replace("__LIB_NAME__", Slug(projectName), StringComparison.Ordinal);
             batch.StageText(target, text);
         }

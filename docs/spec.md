@@ -1,8 +1,8 @@
 # FWC Spec
 
 ## 结构
-- FWC 是可复用代码框架仓库；宿主安装目录仍为 `fw/`，只保存运行时、生成器、模板、工具和通用文档。当前远端地址见使用说明，不能从本地目录名推定已发布的远端名称。
-- `fw/core/cs`：必带的 `Fw.Core`；`fw/kit/<id>`：`app / anim / net / rec / ai / lua`。离线能力分别位于 `fw/tool/train`、`fw/tool/e2e`、`fw/csharp/FwGen` 与 `fw/templates`；FWE 是外部可选编辑器，不是 FW 内置 Kit。
+- FWC 是可复用代码框架仓库；新宿主默认安装在 `fwc/`，只保存运行时、生成器、模板、工具和通用文档。顶层 FW 负责可选的组件编排，不成为 FWC 的运行依赖。
+- `fwc/core/cs`：必带的 `Fw.Core`；`fwc/kit/<id>`：`app / anim / net / rec / ai / lua`。离线能力分别位于 `fwc/tool/train`、`fwc/tool/e2e`、`fwc/csharp/FwGen` 与 `fwc/templates`；FWE 是外部可选编辑器，不是 FW 内置 Kit。
 - `fw.toml`：宿主工程路径与 .NET 工程入口，只接受固定 section/key，所有路径必须位于工程根目录内。
 - `[use].game / host`：必填，按目标选择 Kit，`core` 自动加入；缺失时配置加载直接失败。
 - `[use].game_net_adapter / host_net_adapter`：可选字符串，选择 `net` 的目标默认使用 `"lite"`，设置 `"none"` 时不引用 LiteNetLib adapter，只保留 `Fw.Net` 合同供宿主自行装配 transport。两目标互不影响，未选择 `net` 时不得声明该选项。
@@ -20,7 +20,8 @@
 - `Fw.Rt.Animation`：与玩法无关的固定 tick 程序动作采样器；C# Core 与 Godot 表现可对同一组姿态键执行相同缓动、Y-X-Z 四元数插值和有界自适应子采样。
 
 ## Compatibility
-- FWC 的仓库更名不改变 `fw/` 宿主安装路径、`fw.toml`、`Fw.*` 命名空间、生成协议或 `fw`/`fwgen` CLI；不得把品牌更名当作全局标识符迁移。
+- 新工程安装路径默认 `fwc/`；`craft fw-new --framework-path <相对路径>` 可显式选择工程内的其他位置，包括嵌套目录和空格。入口写入 `fw.toml [dotnet].fwgen`；模板、Kit 定位和生成器指纹从实际入口解析，不另存一份组件路由。
+- 路径各段只允许 ASCII 字母、数字、空格、`_`、`-`、`.`；拒绝空段、`.`/`..`、尾空格/点、绝对路径及逃出项目的符号链接。`fw.toml`、`Fw.*`、生成协议和 `scripts/_fw/fw` 投影不变；旧工程不自动迁移。长期规则中的 `fw/` 是框架根的历史称呼，具体安装位置由入口确定。
 - Godot：`4.6.2 .NET`，由模板、`global.json` 与 CI 共同固定。
 - 构建 SDK：`.NET SDK 10.0.201`；只负责还原和编译，不改变游戏程序集的 API 基线。
 - Target framework：`net8.0`；游戏、DS、Core 与 Kit 保持一致，命令行工具在缺少 8 运行时时允许 `Major` 向前运行。
@@ -210,21 +211,21 @@
 - 内容未变化的文件不会重写；`config_pack` 同批删除不再对应当前 config root 的旧 `.bin`。
 - `csharp/_gen/_fwgen_manifest.json` 记录生成器、输入和完整输出集合的 hash，包括启用的 FWE 契约；`fw check` 拒绝缺失、过期、集合异常或被手改的生成产物。
 - `fw check` 同时检查路径、目录、角色后缀、禁止引用以及 system/bridge/config schema。
-- `new` 在返回成功前自动完成生成、`config_check` 和 `fw check`。
+- `new` 在返回成功前自动完成生成、`config_check` 和 `fw check`；非法框架路径在模板写出前拒绝。
 
 ## 测试
 - `FwGenTests` 按 `proto / system / bridge / config / runtime / api` 分组，覆盖合法/非法 proto、import/package/oneof、proto 零值、生成标识符冲突、system phase/回滚/fault 清理、生成锁、批次新增/替换/删除回滚、生成清单、config pack 和 wire frame，包括 import 穿越/歧义、数字溢出、格式头、版本、校验和、长度边界与逐字节变异。
 - `tools/test.ps1`、`tools/test.sh` 会构建模块与生成器，运行 `FwGenTests` 与 `Fw.Verify`，并在全新临时目录验证 `new -> sync -> check -> config_pack -> build`。
-- 测试会比较规范源与模板镜像，并验证重复生成、重复打包的内容完全一致。
+- 测试会比较规范源与模板镜像，并验证重复生成、重复打包的内容完全一致。路径回归覆盖默认 `fwc`、`modules/code kit`、非法路径拒绝和移动后生成器源码变化检测；CI 在 Windows/Linux 对两种安装位置分别执行完整链路。
 - 本地存在 Godot .NET 时继续执行 headless editor 扫描、编辑器改写后的二次 check/build、runtime 故障注入、通用服务探针和主场景启动；可用 `GODOT_BIN` 显式指定可执行文件。
 - 完整脚本在生成代码测试之前解析 Godot，并让数值探针与模板探针使用同一引擎；CI 缺失 Godot 或尝试跳过时失败。Windows/Linux 编辑器验证均等待 `--import` 完成，不在资源导入完成前退出。
 - `.github/workflows/ci.yml` 使用只读仓库权限，在 Windows 与 Linux 安装固定 Godot .NET，并执行同一完整测试链；同一引用的新任务会取消旧任务，单个 job 最长运行 30 分钟。
-- `fw/Directory.Build.props` 统一 core、Kit、tool 与测试工程的 target framework，并把 C# 警告视为错误；`fw/csharp/Directory.Build.props` 只负责向生成器和验证器导入该事实源。
-- C# snapshot 冻结 `Fw.Rt.*` 的公开类型、继承关系、构造、字段、属性访问器、事件、方法和运算符；Godot snapshot 自动扫描 `fw/scripts/fw` 下全部 `class_name`，冻结直接基类、方法签名与默认值、signal、属性和常量值。
-- `fw/tests/runtime_test.gd` 覆盖 binding 所有权、pool 状态互斥、ViewStore 缓存、UI wrapper/form logic、失效 UI stack、GDScript system 与 mode 回滚；`fw/tools/verify_runtime.gd` 覆盖 event/FSM/system、asset 并发与 provider 生命周期、pool/log/audio/display/debug。普通 Godot `ERROR` 默认会让测试失败，仅逐条列出的故障注入可放行。
+- `fwc/Directory.Build.props` 统一 core、Kit、tool 与测试工程的 target framework，并把 C# 警告视为错误；`fwc/csharp/Directory.Build.props` 只负责向生成器和验证器导入该事实源。
+- C# snapshot 冻结 `Fw.Rt.*` 的公开类型、继承关系、构造、字段、属性访问器、事件、方法和运算符；Godot snapshot 自动扫描 `fwc/scripts/fw` 下全部 `class_name`，冻结直接基类、方法签名与默认值、signal、属性和常量值。
+- `fwc/tests/runtime_test.gd` 覆盖 binding 所有权、pool 状态互斥、ViewStore 缓存、UI wrapper/form logic、失效 UI stack、GDScript system 与 mode 回滚；`fwc/tools/verify_runtime.gd` 覆盖 event/FSM/system、asset 并发与 provider 生命周期、pool/log/audio/display/debug。普通 Godot `ERROR` 默认会让测试失败，仅逐条列出的故障注入可放行。
 
 ## 治理
-- FWC 的 `docs/rule.md`、`docs/spec.md`、`docs/use.md` 是框架规范源；宿主安装后位于 `fw/docs/`。
+- FWC 的 `docs/rule.md`、`docs/spec.md`、`docs/use.md` 是框架规范源；宿主安装后位于 `fwc/docs/`。
 - 默认模板中的 `docs/fw/` 是上述文档的派生产物，不作为反向维护源。
 - 通用 `fw-code` 技能源唯一位于独立 FWS 的 `skills/fw-code/`；FWC 与默认模板不再分发旧 `fw` 或另一份 `fw-code` 技能。FWC 的代码和规范不依赖 FWS 才能使用。
 - `hooks/pre-commit` 只做 FWC 文档源到默认模板的同步；若更新派生文件会中止提交，要求审阅并重新暂存。

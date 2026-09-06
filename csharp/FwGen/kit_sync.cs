@@ -66,7 +66,7 @@ static class KitSync
 
     private static SyncPlan CreatePlan(string root, FwConfig config)
     {
-        var fwRoot = ResolveFwRoot(root, config);
+        var fwRoot = FrameworkPaths.FromConfig(root, config);
         var inputs = new HashSet<string>(PathComparer())
         {
             Path.Combine(root, "fw.toml"),
@@ -191,20 +191,6 @@ static class KitSync
         text.AppendLine("  </ItemGroup>");
         text.AppendLine("</Project>");
         files.Add(new SyncFile(output, text.ToString()));
-    }
-
-    private static string ResolveFwRoot(string root, FwConfig config)
-    {
-        var project = config.GeneratorProjectPath(root);
-        for (var directory = new DirectoryInfo(Path.GetDirectoryName(project)!); directory != null; directory = directory.Parent)
-        {
-            if (File.Exists(Path.Combine(directory.FullName, "core", "cs", "Fw.Core.csproj"))
-                && Directory.Exists(Path.Combine(directory.FullName, "kit")))
-            {
-                return directory.FullName;
-            }
-        }
-        throw new DirectoryNotFoundException($"cannot find fw root above generator project: {project}");
     }
 
     private static string Xml(string value)

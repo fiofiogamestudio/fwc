@@ -70,7 +70,7 @@ $ResolvedCSharpProject = if ([string]::IsNullOrWhiteSpace($CSharpProject)) {
 
 $ResolvedGeneratorProject = if ([string]::IsNullOrWhiteSpace($GeneratorProject)) {
     if ([string]::IsNullOrWhiteSpace($ConfiguredGeneratorProject)) {
-        Join-Path $ResolvedProjectRoot "fw\csharp\FwGen\FwGen.csproj"
+        Join-Path $ResolvedProjectRoot "fwc\csharp\FwGen\FwGen.csproj"
     } else {
         Join-Path $ResolvedProjectRoot $ConfiguredGeneratorProject
     }

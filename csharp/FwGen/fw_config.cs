@@ -107,7 +107,7 @@ sealed class FwConfig
 
     public string GeneratorProjectPath(string root)
     {
-        return PathValue(root, "dotnet", "fwgen", "fw/csharp/FwGen/FwGen.csproj");
+        return PathValue(root, "dotnet", "fwgen", "fwc/csharp/FwGen/FwGen.csproj");
     }
 
     public bool HasHostProject()

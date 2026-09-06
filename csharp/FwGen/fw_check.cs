@@ -741,6 +741,7 @@ static class FwCheck
 
         private void CheckForbiddenReferences()
         {
+            var templateRoot = Path.Combine(FrameworkPaths.FromConfig(_root, _config), "templates", "fw_new", "default");
             var roots = new List<string>
             {
                 Path.Combine(_root, "project.godot"),
@@ -749,7 +750,7 @@ static class FwCheck
                 Path.Combine(_root, "schema"),
                 Path.Combine(_root, "prefabs"),
                 Path.Combine(_root, "scenes"),
-                Path.Combine(_root, "fw", "templates", "fw_new", "default"),
+                templateRoot,
             };
 
             foreach (string root in roots)
@@ -765,7 +766,7 @@ static class FwCheck
                 }
                 foreach (string file in Directory.GetFiles(root, "*", SearchOption.AllDirectories))
                 {
-                    if (IsUnder(file, Path.Combine(_root, "fw", "templates", "fw_new", "default", "docs")))
+                    if (IsUnder(file, Path.Combine(templateRoot, "docs")))
                     {
                         continue;
                     }

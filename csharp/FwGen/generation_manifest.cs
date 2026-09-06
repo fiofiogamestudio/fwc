@@ -161,6 +161,7 @@ static class GenerationManifest
         }
         VerifySection(
             root,
+            config,
             model,
             "system",
             [config.SystemsSchemaPath(root), Path.Combine(root, "fw.toml")],
@@ -168,6 +169,7 @@ static class GenerationManifest
         );
         VerifySection(
             root,
+            config,
             model,
             "bridge",
             SchemaFiles(config.BridgeSchemaDir(root)).Append(Path.Combine(root, "fw.toml")),
@@ -182,6 +184,7 @@ static class GenerationManifest
         );
         VerifySection(
             root,
+            config,
             model,
             "config",
             ConfigInputHash(root, config),
@@ -189,7 +192,7 @@ static class GenerationManifest
         );
         if (config.HasUseSection())
         {
-            VerifySection(root, model, "sync", KitSync.Inputs(root, config), KitSync.Outputs(root, config));
+            VerifySection(root, config, model, "sync", KitSync.Inputs(root, config), KitSync.Outputs(root, config));
         }
     }
 
@@ -230,7 +233,7 @@ static class GenerationManifest
         model.Format = 1;
         model.Commands[command] = new GenerationManifestSection
         {
-            GeneratorHash = GeneratorHash(root),
+            GeneratorHash = GeneratorHash(root, config),
             InputHash = inputHash,
             Outputs = outputs
                 .Select(Path.GetFullPath)
@@ -247,17 +250,19 @@ static class GenerationManifest
 
     private static void VerifySection(
         string root,
+        FwConfig config,
         GenerationManifestModel model,
         string command,
         IEnumerable<string> inputs,
         IEnumerable<string> expectedOutputs
     )
     {
-        VerifySection(root, model, command, HashInputs(root, inputs), expectedOutputs);
+        VerifySection(root, config, model, command, HashInputs(root, inputs), expectedOutputs);
     }
 
     private static void VerifySection(
         string root,
+        FwConfig config,
         GenerationManifestModel model,
         string command,
         string inputHash,
@@ -272,7 +277,7 @@ static class GenerationManifest
         {
             throw new InvalidOperationException($"generated manifest has no `{command}` entry; run fwgen {command}");
         }
-        if (section.GeneratorHash != GeneratorHash(root))
+        if (section.GeneratorHash != GeneratorHash(root, config))
         {
             throw new InvalidOperationException($"{command} output was created by a different fwgen build; run fwgen {command}");
         }
@@ -392,9 +397,9 @@ static class GenerationManifest
         return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
     }
 
-    private static string GeneratorHash(string root)
+    private static string GeneratorHash(string root, FwConfig config)
     {
-        var generatorDir = Path.Combine(root, "fw", "csharp", "FwGen");
+        var generatorDir = Path.GetDirectoryName(config.GeneratorProjectPath(root))!;
         if (!Directory.Exists(generatorDir))
         {
             return Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(typeof(GenerationManifest).Assembly.Location)))
@@ -402,8 +407,8 @@ static class GenerationManifest
         }
         var inputs = Directory.GetFiles(generatorDir, "*.cs", SearchOption.TopDirectoryOnly)
             .Append(Path.Combine(generatorDir, "FwGen.csproj"))
-            .Append(Path.Combine(root, "fw", "csharp", "Directory.Build.props"))
-            .Append(Path.Combine(root, "fw", "Directory.Build.props"));
+            .Append(Path.GetFullPath(Path.Combine(generatorDir, "..", "Directory.Build.props")))
+            .Append(Path.GetFullPath(Path.Combine(generatorDir, "..", "..", "Directory.Build.props")));
         return HashInputs(root, inputs);
     }
 

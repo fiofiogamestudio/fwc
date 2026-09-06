@@ -1,16 +1,16 @@
 extends SceneTree
 
-const FAssetScript = preload("res://fw/scripts/fw/rt/_asset.gd")
-const FAudioScript = preload("res://fw/scripts/fw/vu/audio/_audio.gd")
-const FDisplayScript = preload("res://fw/scripts/fw/rt/display/_display.gd")
-const FDebugScript = preload("res://fw/scripts/fw/rt/debug/_debug.gd")
-const FEventBusScript = preload("res://fw/scripts/fw/rt/event/_event_bus.gd")
-const FLogScript = preload("res://fw/scripts/fw/rt/log/_log.gd")
-const FLocalizationScript = preload("res://fw/scripts/fw/rt/localization/_localization.gd")
-const FLocalizationCatalogScript = preload("res://fw/scripts/fw/rt/localization/_localization_catalog.gd")
-const FPoolScript = preload("res://fw/scripts/fw/rt/pool/_pool.gd")
-const FStateMachineScript = preload("res://fw/scripts/fw/rt/state/_state_machine.gd")
-const SystemManagerScript = preload("res://fw/scripts/fw/rt/system/_system_manager.gd")
+const FAssetScript = preload("res://scripts/_fw/fw/rt/_asset.gd")
+const FAudioScript = preload("res://scripts/_fw/fw/vu/audio/_audio.gd")
+const FDisplayScript = preload("res://scripts/_fw/fw/rt/display/_display.gd")
+const FDebugScript = preload("res://scripts/_fw/fw/rt/debug/_debug.gd")
+const FEventBusScript = preload("res://scripts/_fw/fw/rt/event/_event_bus.gd")
+const FLogScript = preload("res://scripts/_fw/fw/rt/log/_log.gd")
+const FLocalizationScript = preload("res://scripts/_fw/fw/rt/localization/_localization.gd")
+const FLocalizationCatalogScript = preload("res://scripts/_fw/fw/rt/localization/_localization_catalog.gd")
+const FPoolScript = preload("res://scripts/_fw/fw/rt/pool/_pool.gd")
+const FStateMachineScript = preload("res://scripts/_fw/fw/rt/state/_state_machine.gd")
+const SystemManagerScript = preload("res://scripts/_fw/fw/rt/system/_system_manager.gd")
 
 var _trace: Array[String] = []
 
@@ -266,7 +266,7 @@ func _verify_system_manager() -> String:
 
 func _verify_asset() -> String:
 	var asset = FAssetScript.new()
-	var path := "res://fw/scripts/fw/rt/_asset.gd"
+	var path := "res://scripts/_fw/fw/rt/_asset.gd"
 	if not asset.exists(path):
 		return "FAsset did not find a framework script resource."
 	var first := asset.load(path, Script)
@@ -276,7 +276,7 @@ func _verify_asset() -> String:
 	if int(asset.stats().get("cached_count", 0)) != 1:
 		return "FAsset reported incorrect cache statistics."
 	asset.unload()
-	var handle = asset.acquire("res:fw/scripts/fw/rt/_asset.gd", Script)
+	var handle = asset.acquire("res:scripts/_fw/fw/rt/_asset.gd", Script)
 	if handle == null or handle.asset == null:
 		return "FAsset could not acquire a normalized res: key."
 	if int(asset.stats().references.get(path, 0)) != 1:
