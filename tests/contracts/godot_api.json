@@ -8,9 +8,12 @@
 			"asset()->Nil;defaults=[]",
 			"audio()->Nil;defaults=[]",
 			"bind_app_system_refs(refs:Dictionary)->bool;defaults=[]",
+			"blocks_gameplay_input()->bool;defaults=[]",
 			"debug_service()->Nil;defaults=[]",
 			"display()->Nil;defaults=[]",
 			"events()->Nil;defaults=[]",
+			"gm_panel()->Nil;defaults=[]",
+			"gm_service()->Nil;defaults=[]",
 			"localization()->Nil;defaults=[]",
 			"log_service()->Nil;defaults=[]",
 			"mode_host()->Node;defaults=[]",
@@ -34,6 +37,7 @@
 			"asset()->Nil;defaults=[]",
 			"audio()->Nil;defaults=[]",
 			"bind_system_refs(refs:Dictionary)->bool;defaults=[]",
+			"blocks_gameplay_input()->bool;defaults=[]",
 			"debug_service()->Nil;defaults=[]",
 			"display()->Nil;defaults=[]",
 			"enter(root:Nil, context:Nil)->bool;defaults=[null]",
@@ -41,6 +45,7 @@
 			"events()->Nil;defaults=[]",
 			"exit()->Nil;defaults=[]",
 			"fail_enter(message:String)->bool;defaults=[]",
+			"gm_service()->Nil;defaults=[]",
 			"handle_input(_event:InputEvent)->Nil;defaults=[]",
 			"init_systems()->bool;defaults=[]",
 			"is_entered()->bool;defaults=[]",
@@ -380,6 +385,67 @@
 		"signals": [
 			"finished()"
 		]
+	},
+	"FGM": {
+		"base": "RefCounted",
+		"constants": [],
+		"methods": [
+			"clear()->Nil;defaults=[]",
+			"clear_diagnostics(owner:StringName)->Nil;defaults=[&\"\"]",
+			"commands()->Array;defaults=[]",
+			"diagnostics()->Array;defaults=[]",
+			"execute(id:StringName, values:Dictionary, confirmed:bool)->Dictionary;defaults=[null, false]",
+			"favorites()->Array;defaults=[]",
+			"history()->Array;defaults=[]",
+			"inspect_command(id:StringName, values:Dictionary)->Dictionary;defaults=[null]",
+			"is_enabled()->bool;defaults=[]",
+			"is_favorite(id:StringName)->bool;defaults=[]",
+			"register_command(owner:StringName, definition:Dictionary, handler:Callable, options_provider:Callable, availability:Callable)->Dictionary;defaults=[Callable(), Callable()]",
+			"remove_favorite(id:StringName)->Nil;defaults=[]",
+			"set_storage_path(path:String)->Dictionary;defaults=[]",
+			"setup(debug:Nil, log:Nil, history_limit:int)->Nil;defaults=[null, 100]",
+			"toggle_favorite(id:StringName)->Dictionary;defaults=[]",
+			"unregister_command(id:StringName)->Nil;defaults=[]",
+			"unregister_owner(owner:StringName)->Nil;defaults=[]"
+		],
+		"properties": [],
+		"signals": [
+			"changed()",
+			"executed(entry:Dictionary)",
+			"registry_changed()"
+		]
+	},
+	"FGMForm": {
+		"base": "FForm",
+		"constants": [],
+		"methods": [
+			"apply(vm:Nil, _dt:float)->Nil;defaults=[0.0]",
+			"dismiss_popup()->bool;defaults=[]",
+			"focus_search()->Nil;defaults=[]"
+		],
+		"properties": [],
+		"signals": []
+	},
+	"FGMLogic": {
+		"base": "FFormLogic",
+		"constants": [],
+		"methods": [
+			"blocks_input()->bool;defaults=[]",
+			"clear()->Nil;defaults=[]",
+			"handle_input(event:InputEvent)->bool;defaults=[]",
+			"is_minimized()->bool;defaults=[]",
+			"is_open()->bool;defaults=[]",
+			"is_open_shortcut(event:InputEvent)->bool;defaults=[]",
+			"open_panel()->Nil;defaults=[]",
+			"refresh()->Nil;defaults=[]",
+			"set_minimized(value:bool)->Nil;defaults=[]",
+			"set_open_key(key:Key)->Nil;defaults=[]",
+			"setup(ui:Nil, gm:Nil)->Nil;defaults=[]",
+			"tick(dt:float)->Nil;defaults=[]",
+			"toggle()->Nil;defaults=[]"
+		],
+		"properties": [],
+		"signals": []
 	},
 	"FList": {
 		"base": "FWidget",

@@ -7,6 +7,8 @@ const FEventBusScript = preload("../event/_event_bus.gd")
 const FLogScript = preload("../log/_log.gd")
 const FDisplayScript = preload("../display/_display.gd")
 const FDebugScript = preload("../debug/_debug.gd")
+const FGMScript = preload("../gm/_gm.gd")
+const FGMLogicScript = preload("../../vu/gm/_gm_logic.gd")
 const FLocalizationScript = preload("../localization/_localization.gd")
 const FUIScript = preload("../../vu/ui/_ui.gd")
 const FAudioScript = preload("../../vu/audio/_audio.gd")
@@ -19,6 +21,8 @@ var _events: RefCounted
 var _log: RefCounted
 var _display: RefCounted
 var _debug: RefCounted
+var _gm: RefCounted
+var _gm_panel: RefCounted
 var _localization: RefCounted
 var _ui_root: CanvasLayer
 var _ui: RefCounted
@@ -51,6 +55,12 @@ func _ready() -> void:
 
 	_ui = FUIScript.new()
 	_ui.setup(_ui_root)
+	_gm = FGMScript.new()
+	_gm.setup(_debug, _log)
+	var gm_storage: String = OS.get_environment("FW_GM_STORAGE_PATH")
+	_gm.set_storage_path(gm_storage if not gm_storage.is_empty() else "user://gm/history_and_favorites.dat")
+	_gm_panel = FGMLogicScript.new()
+	_gm_panel.setup(_ui, _gm)
 	_audio = FAudioScript.new()
 	_audio.setup(self)
 
@@ -70,6 +80,10 @@ func _exit_tree() -> void:
 	if _app_system_manager:
 		_app_system_manager.shutdown_all()
 	_app_system_manager = null
+	if _gm_panel:
+		_gm_panel.clear()
+	if _gm:
+		_gm.clear()
 	if _ui:
 		_ui.clear()
 	if _pool:
@@ -92,17 +106,34 @@ func _exit_tree() -> void:
 	_log = null
 	_display = null
 	_debug = null
+	_gm = null
+	_gm_panel = null
 	_localization = null
 
 
 func _physics_process(dt: float) -> void:
+	if _gm_panel:
+		_gm_panel.tick(dt)
 	if _app_system_manager:
 		_app_system_manager.tick(dt)
 	if _active_mode:
 		_active_mode.tick(dt)
 
 
+func _input(event: InputEvent) -> void:
+	if _gm_panel and _gm and _gm.is_enabled() and not _gm_panel.is_open():
+		if _gm_panel.is_open_shortcut(event):
+			_gm_panel.open_panel()
+			get_viewport().set_input_as_handled()
+			return
+	if _gm_panel and _gm_panel.handle_input(event):
+		get_viewport().set_input_as_handled()
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if blocks_gameplay_input():
+		get_viewport().set_input_as_handled()
+		return
 	if _active_mode and _active_mode.has_method("handle_input"):
 		_active_mode.handle_input(event)
 
@@ -127,6 +158,8 @@ func switch_mode(mode: Variant, context: Variant = null) -> Variant:
 	if _active_mode:
 		_active_mode.exit()
 		_active_mode = null
+	if _gm_panel:
+		_gm_panel.close()
 	_ui.close_all()
 	_pool.flush()
 	_clear_mode_host()
@@ -220,6 +253,19 @@ func display() -> Variant:
 
 func debug_service() -> Variant:
 	return _debug
+
+
+func gm_service() -> Variant:
+	return _gm
+
+
+func gm_panel() -> Variant:
+	return _gm_panel
+
+
+## Hosts polling Input directly should check this before submitting gameplay intents.
+func blocks_gameplay_input() -> bool:
+	return _gm_panel != null and _gm_panel.blocks_input()
 
 
 func ui_root() -> CanvasLayer:

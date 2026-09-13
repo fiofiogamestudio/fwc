@@ -144,5 +144,13 @@ func debug_service() -> Variant:
 	return _root.debug_service()
 
 
+func gm_service() -> Variant:
+	return _root.gm_service()
+
+
+func blocks_gameplay_input() -> bool:
+	return _root != null and _root.blocks_gameplay_input()
+
+
 func log_service() -> Variant:
 	return _root.log_service()

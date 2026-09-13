@@ -138,6 +138,17 @@
 - `FSkeletonAppearanceModifier` 是与具体模型无关的非权威骨骼比例层。宿主用语义骨骼 profile 映射 Rig，并为每根骨骼声明正数最小/最大缩放；Modifier 会在应用前夹取请求、忽略未映射或非法调整、保留原始姿态基准，并在清空或重新配置时恢复该基准。它只处理骨骼局部缩放，不负责换装资源、材质、碰撞体或属性。
 - logic 读取 context 中的 VM/event，通过 context 数据入口或 intent 提交操作，不持有 system 本体。
 
+## GM
+- `app` Kit 提供通用 GM 服务 `FGM`（`scripts/fw/rt/gm/_gm.gd`）和面板 `FGMLogic`；`FDebug` 仍只负责能力开关，GM 的命令、参数和执行状态由独立服务持有。服务使用 GDScript 实现，C# 宿主通过现有 Godot / bridge 边界接入，不增加独立 Kit 或 Lua 依赖。
+- `AppRoot.gm_service()` / `gm_panel()` 分别提供服务和面板，`BaseMode.gm_service()` 转发服务。宿主显式启用 `FDebug` 后，F1 切换面板；Escape 先关闭可见下拉或文本菜单，否则关闭面板。面板开关不停止 system tick，使用轮询输入的宿主通过 root/mode 的 `blocks_gameplay_input()` 避免操作穿透。
+- `FGM.setup(debug, log = null, history_limit = 100)` 绑定启用门禁、可选日志和有界会话历史。`register_command(owner, definition, handler, options_provider, availability)` 按 owner 注册，`unregister_owner(owner)` / `unregister_command(id)` 注销，`clear()` 清理；重复命令 ID 与无效定义返回失败，不覆盖已有命令。
+- 命令定义包含 `id / title / description / section / category / scope / source / target_name / confirmation / order / risk / args`；风险为 `normal / caution / destructive`，范围为 `global / target`。参数包含 `id / label / kind / required / default / min / max / options / depends_on`，类型为 `text / text_area / int / float / bool / dropdown`；可选字段按类型使用，`depends_on` 只用于 dropdown，且只引用前面已声明的参数。
+- 下拉选项使用 `{value: String, label: String}`；静态选项放在参数 `options`，动态选项通过 `options_provider(arg_id, normalized_previous_values)` 返回 `{ok, message?, options}`。`availability(values)` 返回 `{ok, message?}`，`handler(values)` 返回 `{ok, message?, data?}`；回调负责将预期失败转换为结构化结果。
+- `commands()` 返回描述快照；`inspect_command(id, values = {})` 返回 `{ok, code, message, command, values, options, errors, available}`，供面板显示规范化参数、选项和不可用原因。`execute(id, values = {}, confirmed = false)` 通过注册 ID 查找当前命令，重新校验门禁、参数、实时选项与可用性；`caution / destructive` 都必须确认后执行。返回 `{ok, code, message, data?}`，业务拒绝不得当作成功。
+- `history()` 提供有界执行记录，包含 `sequence / time_msec / time_text / id / title / section / category / source / scope / target_name / values / result`，`changed()` / `executed(entry)` 提供刷新信号。结果 `data` 接受可复制的值，包括标量、Godot 数学值、PackedArray 以及无循环的数组、字典；不接受 `Object / Callable / Signal` 或嵌套超过 32 层的容器。面板提供两层目录、全局多词搜索、持久收藏、窗口参数草稿、完整历史详情与参数载入/重执行；选项刷新与历史查看不能代替最终执行校验。
+- `set_storage_path(path)` 装载并保存收藏和历史；AppRoot 默认使用 `user://gm/history_and_favorites.dat`，可由 `FW_GM_STORAGE_PATH` 指定隔离文件。私有存储模块检查版本、长度、摘要和数据类型，使用同目录临时文件替换；诊断通过 `diagnostics()` 提供，失败时保留当前会话数据。收藏只保存命令元数据，参数草稿只属于当前打开窗口；`clear/setup` 清空内存，不删除已有缓存。
+- 宿主提供具体命令及其状态来源。C# 宿主的 handler 经 bridge 向 `GameCore` 提交意图；服务和面板不直接访问玩法 system 或状态。GM 不提供脚本沙箱、远程身份鉴权、跨语言事务或业务回滚，GDScript 回调错误也不具有 C# 异常捕获语义。
+
 ## Bridge
 - bridge 是 Godot 与 C# core 的唯一运行时边界。
 - proto 是合同 DSL，当前不是严格 protobuf wire runtime。

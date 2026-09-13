@@ -188,6 +188,53 @@ Lua 只在玩法确实需要文本脚本时启用，不是可视 AI 图的组成
 - C# `StateMachine` 的 enter/exit/transition/Started/Transitioned 回调抛错后会停机并清空 current；`Clear` 仍保证移除注册，修复原因后可重新注册并 `Start`。
 - `LogBuffer` 会复制结构化 data 的字典层，调用方可继续修改原字典；字典内对象仍由调用方负责不可变性或深拷贝，`ForwardTo` 不允许形成 buffer 转发环。
 
+## GM
+
+启用 `app` Kit 并同步后，`AppRoot` 已装配 `FGM` 和 `FGMLogic`。在宿主 `on_app_setup()` 中显式启用调试并注册命令；F1 打开或关闭面板，Escape 先关闭可见下拉或文本菜单，否则关闭面板。默认 `FDebug` 不启用，发布构建还受其 release 许可限制。
+
+下面的 GD 示例只回显输入，可直接放进继承 `AppRoot` 的宿主 app 脚本：
+
+```gdscript
+extends AppRoot
+
+func on_app_setup() -> void:
+    debug_service().set_enabled(true)
+    var result: Dictionary = gm_service().register_command(
+        &"example.app",
+        {
+            "id": "debug.echo",
+            "title": "回显文本",
+            "description": "验证 GM 参数输入和结果显示。",
+            "category": "诊断",
+            "risk": "normal",
+            "args": [
+                {"id": "text", "label": "内容", "kind": "text",
+                 "required": true, "default": "GM ready"}
+            ]
+        },
+        Callable(self, "_gm_echo")
+    )
+    if not result.get("ok", false):
+        push_error(str(result.get("message", "GM registration failed")))
+
+func _gm_echo(values: Dictionary) -> Dictionary:
+    return {"ok": true, "message": values["text"]}
+```
+
+- 在 AppRoot 外独立使用时，先 `gm.setup(debug, log, history_limit)`，再 `panel.setup(ui, gm)`，由宿主转发输入到 `panel.handle_input(event)` 并每帧调用 `panel.tick(dt)`。`panel` 提供 `open_panel / toggle / close / is_open / blocks_input / refresh / clear`；已有 AppRoot 已负责装配和推进，不需要重复调用。
+- 动态下拉在注册时传入 `options_provider`：`func(arg_id, previous_values) -> Dictionary` 返回 `{"ok": true, "options": [{"value": "stable_id", "label": "显示名"}]}`。dropdown 参数的 `depends_on` 列出前置参数 ID；依赖为空或无效时不会调用 provider，provider 使用全部已规范化的有效前置值查询当前选项。失败返回 `{"ok": false, "message": "原因"}`。
+- `availability` 回调接收规范化的参数并返回 `{ok, message?}`。把场景、目标和当前业务前置条件放在此处；handler 仍须通过宿主的权威入口执行并返回明确的成功或失败。可选 int/float 留空时不会出现在 values 中；其他可选文本/下拉空值为 `""`，布尔缺省为 `false`，handler 应使用适当的 `get` 默认值。
+- 用 `inspect_command(id, values)` 更新自定义面板，它的 `options` 按参数 ID 分组，`errors` 给出参数错误，`ok/code` 标识本次检查结果。执行统一调用 `execute(id, values)`；`risk = "caution"` 或 `"destructive"` 都需要明确确认后传入 `confirmed = true`。框架自带面板负责确认交互，其他入口也不能跳过最终校验。
+- 一个 mode 的命令使用稳定且独占的 owner；离开 mode 时在依赖释放前调用 `gm_service().unregister_owner(owner)`，避免留下引用旧 context 的回调。AppRoot 退出时会清理内存中的服务；已保存的收藏和历史在下次装载缓存时恢复，当前未注册的命令不能执行。
+- 面板打开时框架会拦截事件输入；自行调用 `Input.is_action_pressed` 等轮询 API 的宿主，在生成玩法意图前先检查 `blocks_gameplay_input()`。这个检查只阻止新输入，不暂停模拟或删除已提交意图。
+- C# 游戏的适配链为 `FGM handler -> 宿主 Godot bridge -> GameCore 意图入口 -> 权威 system/rules -> view/event`。新增协议时修改现有 `schema/bridge/intent.proto` 及相应值、事件定义，再运行 bridge 生成；adapter 使用宿主实际生成的类型和 codec，GM 框架不提供游戏专用消息类型。bridge 可做格式转换，业务条件、范围和目标合法性由 core 再校验；入队成功不等于权威执行完成。
+- handler 的可选 `data` 只返回普通值或无循环的数组、字典，不返回 `Object / Callable / Signal`。`history()` 的每项包含顺序、时间、命令与来源元数据、参数和结果，用 `result.ok` 区分成功和失败，不通过显示文本猜测。面板展示服务保留的全部记录（默认上限 100 条），支持载入参数和再次执行；重执行重新校验当前定义、选项与条件，有风险的命令仍须确认。
+- AppRoot 默认将收藏和历史保存在 `user://gm/history_and_favorites.dat`；用 `FW_GM_STORAGE_PATH` 指定独立缓存。独立服务通过 `set_storage_path(path)` 启用持久化，传空字符串关闭后续保存。缓存采用版本、长度、摘要和类型校验，读取或写入失败可在系统诊断中查看，当前会话数据继续保留。
+- 收藏保存命令元数据，不保存参数预设。打开窗口后切换命令保留各自参数草稿；完整关闭再打开时清空草稿，回到最近使用、展开并居中。拖动标题栏可移动面板，收起和展开保持同一中心并持续拦截游戏输入；收起保留待确认操作，危险快捷执行会展开确认。
+- provider、availability 和 handler 都是同步 Callable，分别接受 2、1、1 个参数；把可预期错误返回为结构化结果，不依赖 GDScript 捕获任意运行时错误。GM 不替代权限边界、沙箱或业务事务，不能保证回调发生部分写入后的回滚。
+
+在 FWC 仓库根运行 `powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./tools/test.ps1`，既有完整测试入口包含 GM 服务行为与公共 API 检查。
+
 ## 验证
 - 最小验证：`fwc/tools/check.ps1`。
 - 提交前验证：`fwc/tools/test.ps1`。

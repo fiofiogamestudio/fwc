@@ -3,6 +3,7 @@ extends SceneTree
 const BindingScript = preload("res://fw/scripts/fw/vu/_binding.gd")
 const PoolScript = preload("res://fw/scripts/fw/rt/pool/_pool.gd")
 const AssetScript = preload("res://fw/scripts/fw/rt/_asset.gd")
+const GMServiceTest = preload("res://fw/tests/gm_service_test.gd")
 const LocalizationScript = preload("res://fw/scripts/fw/rt/localization/_localization.gd")
 const LocalizationCatalogScript = preload("res://fw/scripts/fw/rt/localization/_localization_catalog.gd")
 const AppRootScript = preload("res://fw/scripts/fw/rt/system/_app_root.gd")
@@ -138,6 +139,8 @@ func _init() -> void:
 
 
 func _run() -> void:
+	var gm_error: String = GMServiceTest.new().run()
+	_check(gm_error.is_empty(), gm_error)
 	_test_public_api()
 	_test_binding()
 	_test_localization()
